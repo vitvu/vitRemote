@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -24,6 +25,7 @@ import com.google.android.material.textfield.TextInputEditText
 class MainActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
+    private lateinit var swCapture: MaterialSwitch
     private val ui = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() { refresh(); ui.postDelayed(this, 1500) }
@@ -36,19 +38,23 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         prefs = Prefs(this)
 
-        val root = findViewById<android.view.View>(R.id.root)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { v, ins ->
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root)) { v, ins ->
             val b = ins.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(b.left, b.top, b.right, b.bottom); ins
         }
 
         findViewById<MaterialButton>(R.id.btnA11y).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            Toast.makeText(this, "Chọn \"vitRemote\" và bật lên", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Select \"vitRemote\" and turn it on", Toast.LENGTH_LONG).show()
         }
         findViewById<MaterialSwitch>(R.id.swServer).apply {
             isChecked = prefs.enabled
             setOnCheckedChangeListener { _, on -> prefs.enabled = on; restart() }
+        }
+        swCapture = findViewById(R.id.swCapture)
+        swCapture.setOnClickListener {
+            if (swCapture.isChecked) startActivity(Intent(this, ProjectionActivity::class.java))
+            else CaptureService.stop(this)
         }
         findViewById<MaterialButton>(R.id.btnPin).setOnClickListener { prefs.newPin(); restart() }
         val portEt = findViewById<TextInputEditText>(R.id.port)
@@ -56,13 +62,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.btnPort).setOnClickListener {
             val p = portEt.text?.toString()?.toIntOrNull()
             if (p == null || p !in 1024..65535) {
-                Toast.makeText(this, "Cổng phải từ 1024 đến 65535", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Port must be between 1024 and 65535", Toast.LENGTH_SHORT).show()
             } else { prefs.port = p; restart() }
         }
         findViewById<MaterialButton>(R.id.btnCopy).setOnClickListener {
             (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
                 .setPrimaryClip(ClipData.newPlainText("url", urls().firstOrNull() ?: ""))
-            if (Build.VERSION.SDK_INT < 33) Toast.makeText(this, "Đã sao chép", Toast.LENGTH_SHORT).show()
+            if (Build.VERSION.SDK_INT < 33) Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
         }
         findViewById<MaterialButton>(R.id.btnShare).setOnClickListener {
             val t = "vitRemote: ${urls().joinToString(" ")}  PIN: ${prefs.pin}"
@@ -91,29 +97,33 @@ class MainActivity : AppCompatActivity() {
         val enabled = a11yEnabled()
         val running = svc?.running == true
         val (title, sub, color) = when {
-            !enabled -> Triple("Chưa bật Trợ năng", "Bật dịch vụ vitRemote trong Cài đặt › Trợ năng để bắt đầu.", R.color.bad)
-            !prefs.enabled -> Triple("Máy chủ đang tắt", "Bật công tắc \"Máy chủ web\" bên dưới.", R.color.bad)
-            !running -> Triple("Lỗi máy chủ", RemoteService.lastError ?: "Đang khởi động…", R.color.bad)
-            else -> Triple("Đang hoạt động", "${svc!!.clientCount} trình duyệt đang kết nối", R.color.ok)
+            !enabled -> Triple("Accessibility is off", "Turn on vitRemote in Settings › Accessibility to start.", R.color.bad)
+            !prefs.enabled -> Triple("Server is off", "Turn on \"Web server\" below.", R.color.bad)
+            !running -> Triple("Server error", RemoteService.lastError ?: "Starting…", R.color.bad)
+            else -> Triple("Running", "${svc!!.clientCount} browser(s) connected", R.color.ok)
         }
         findViewById<TextView>(R.id.status).text = title
         findViewById<TextView>(R.id.statusSub).text = sub
-        findViewById<android.view.View>(R.id.dot).background =
+        findViewById<View>(R.id.dot).background =
             GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(getColor(color)) }
-        findViewById<MaterialButton>(R.id.btnA11y).visibility =
-            if (enabled) android.view.View.GONE else android.view.View.VISIBLE
+        findViewById<MaterialButton>(R.id.btnA11y).visibility = if (enabled) View.GONE else View.VISIBLE
 
         val u = urls()
-        findViewById<TextView>(R.id.url).text =
-            if (u.isEmpty()) "Chưa kết nối mạng" else u.joinToString("\n")
+        findViewById<TextView>(R.id.url).text = if (u.isEmpty()) "No network" else u.joinToString("\n")
         findViewById<TextView>(R.id.pin).text = prefs.pin
 
+        val capOn = CaptureService.instance != null
+        swCapture.isChecked = capOn
+        findViewById<TextView>(R.id.captureSub).text = when {
+            capOn -> "Smooth streaming up to 15 fps. Frames are only sent when the screen changes."
+            Build.VERSION.SDK_INT >= 30 -> "Off: the web view uses the Accessibility screenshot API (~3 fps). Turn on for smoother streaming."
+            else -> "Required on Android ${Build.VERSION.RELEASE} to view the screen. It is also requested automatically when you open the web view."
+        }
+
         findViewById<TextView>(R.id.info).text = buildString {
-            append("• Thiết bị: ${Build.MANUFACTURER} ${Build.MODEL}\n")
-            append("• Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
-            append("• Xem màn hình/chụp ảnh qua web: ${if (Build.VERSION.SDK_INT >= 30) "Có" else "Cần Android 11+"}\n")
-            append("• Giao thức: WebSocket nhị phân, ảnh chỉ gửi khi màn hình thay đổi\n")
-            append("• Mẹo: tắt tối ưu pin cho vitRemote để không bị hệ thống dừng")
+            append("Device: ${Build.MANUFACTURER} ${Build.MODEL}\n")
+            append("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
+            append("Tip: disable battery optimization for vitRemote so the system doesn't stop it.")
         }
     }
 }

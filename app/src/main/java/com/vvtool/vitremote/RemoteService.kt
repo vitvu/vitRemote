@@ -2,22 +2,18 @@ package com.vvtool.vitremote
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
-import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
-import android.os.PowerManager
 import android.os.SystemClock
 import android.view.Display
-import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.io.ByteArrayOutputStream
@@ -29,6 +25,14 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
         @Volatile var instance: RemoteService? = null
             private set
         @Volatile var lastError: String? = null
+
+        /** First byte is the type: 1 = live frame, 2 = full screenshot. Rest is JPEG. */
+        fun jpeg(b: Bitmap, q: Int, type: Int): ByteArray {
+            val bo = ByteArrayOutputStream(64 * 1024)
+            bo.write(type)
+            b.compress(Bitmap.CompressFormat.JPEG, q, bo)
+            return bo.toByteArray()
+        }
     }
 
     private var server: WebServer? = null
@@ -38,11 +42,11 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
     private val cap = Handler(capThread.looper)
 
     @Volatile private var foregroundApp = ""
-    @Volatile private var torchOn = false
-    private var torchId: String? = null
+    @Volatile private var lastLive: ByteArray? = null
+    private var lastConsentAsk = 0L
     private val startedAt = SystemClock.elapsedRealtime()
 
-    // ---- trạng thái chụp màn hình (chỉ truy cập trên luồng cap) ----
+    // Accessibility screenshot loop state (only touched on the cap thread)
     private var capturing = false
     private val fullWaiters = ArrayList<WebServer.Client>()
 
@@ -52,7 +56,6 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
     override fun onServiceConnected() {
         instance = this
         prefs = Prefs(this)
-        setupTorch()
         applyConfig()
     }
 
@@ -68,12 +71,12 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
         stopServer()
         capThread.quitSafely()
         main.removeCallbacksAndMessages(null)
-        // Khi hệ thống bind lại, instance mới có thể đã được gán trước khi instance cũ bị huỷ
+        // On rebind the new instance may be assigned before the old one is destroyed
         if (instance === this) instance = null
         super.onDestroy()
     }
 
-    /** Bật/tắt/khởi động lại máy chủ theo cấu hình hiện tại. */
+    /** Start/stop/restart the server according to the current settings. */
     fun applyConfig(attempt: Int = 0) {
         main.removeCallbacksAndMessages(null)
         stopServer()
@@ -84,8 +87,8 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
             lastError = null
         } catch (e: Exception) {
             server = null
-            lastError = "Không mở được cổng ${prefs.port}: ${e.message}"
-            // Cổng có thể vẫn đang bị instance cũ giữ trong chốc lát => thử lại
+            lastError = "Cannot open port ${prefs.port}: ${e.message}"
+            // The old instance may still hold the port for a moment => retry
             if (attempt < 5) main.postDelayed({ applyConfig(attempt + 1) }, 1000)
         }
     }
@@ -103,28 +106,32 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
 
     override fun onClose(c: WebServer.Client) {
         cap.post { fullWaiters.remove(c) }
+        CaptureService.instance?.dropClient(c)
+        updateCapture()
     }
 
     override fun onText(c: WebServer.Client, msg: String) {
         if (msg.isEmpty()) return
-        val cmd = msg[0]
         val arg = if (msg.length > 2) msg.substring(2) else ""
         try {
-            when (cmd) {
+            when (msg[0]) {
                 'a' -> globalAct(c, arg)
                 't' -> { val p = nums(arg); gesture(p[0], p[1], p[0], p[1], 40) }
                 'l' -> { val p = nums(arg); gesture(p[0], p[1], p[0], p[1], 700) }
                 's' -> { val p = nums(arg); gesture(p[0], p[1], p[2], p[3], p.getOrElse(4) { 250 }) }
                 'v' -> volume(arg)
-                'm' -> media(arg)
                 'x' -> setText(c, arg, append = true)
                 'X' -> setText(c, "", append = false)
                 'e' -> imeEnter(c)
-                'f' -> toggleTorch(c)
-                'w' -> wake()
                 'i' -> c.send(info())
                 'c' -> requestFull(c)
-                'L' -> { c.liveWidth = arg.toIntOrNull()?.coerceIn(0, 1440) ?: 0; c.lastFrameCrc = 0; kickCapture() }
+                'L' -> {
+                    c.liveWidth = arg.toIntOrNull()?.coerceIn(0, 1440) ?: 0
+                    c.lastFrameCrc = 0
+                    // Show the last known frame immediately (a static screen produces no new frames)
+                    if (c.liveWidth > 0) lastLive?.let { c.sendBin(it) }
+                    updateCapture()
+                }
                 'p' -> c.send("{\"t\":\"pong\"}")
             }
         } catch (e: Exception) {
@@ -134,25 +141,34 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
 
     private fun nums(s: String) = s.split(',').map { it.trim().toInt() }
 
-    private fun ok(c: WebServer.Client, m: String) = c.send(DeviceInfo.toJson(mapOf("t" to "ok", "m" to m)))
     private fun err(c: WebServer.Client, m: String) = c.send(DeviceInfo.toJson(mapOf("t" to "err", "m" to m)))
+
+    fun notifyAll(type: String, m: String) {
+        val s = DeviceInfo.toJson(mapOf("t" to type, "m" to m))
+        server?.clients?.forEach { it.send(s) }
+    }
+
+    private fun captureMode() = when {
+        CaptureService.instance != null -> "MediaProjection"
+        Build.VERSION.SDK_INT >= 30 -> "Accessibility"
+        else -> "Needs permission"
+    }
 
     private fun info(): String {
         val sz = DeviceInfo.screenSize(this)
         return DeviceInfo.json(
             this, mapOf(
                 "app" to foregroundApp,
-                "torch" to torchOn,
                 "clients" to clientCount,
                 "svcUptime" to (SystemClock.elapsedRealtime() - startedAt) / 1000,
-                "canShot" to (Build.VERSION.SDK_INT >= 30),
+                "capture" to captureMode(),
                 "w" to sz.x, "h" to sz.y,
                 "ver" to (try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "" })
             )
         )
     }
 
-    // ================= Hành động =================
+    // ================= Actions =================
 
     private fun globalAct(c: WebServer.Client, a: String) {
         val id = when (a) {
@@ -162,17 +178,14 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
             "notif" -> GLOBAL_ACTION_NOTIFICATIONS
             "qs" -> GLOBAL_ACTION_QUICK_SETTINGS
             "power" -> GLOBAL_ACTION_POWER_DIALOG
-            "split" -> GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN
             "lock" -> if (Build.VERSION.SDK_INT >= 28) GLOBAL_ACTION_LOCK_SCREEN else -1
             "shot" -> if (Build.VERSION.SDK_INT >= 28) GLOBAL_ACTION_TAKE_SCREENSHOT else -1
-            "dismiss" -> if (Build.VERSION.SDK_INT >= 31) GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE else -1
-            "apps" -> if (Build.VERSION.SDK_INT >= 31) GLOBAL_ACTION_ACCESSIBILITY_ALL_APPS else -1
             else -> -1
         }
-        if (id < 0 || !performGlobalAction(id)) err(c, "Thiết bị không hỗ trợ: $a")
+        if (id < 0 || !performGlobalAction(id)) err(c, "Not supported on this device: $a")
     }
 
-    /** Toạ độ nhận vào theo thang 0..10000 của chiều rộng/cao màn hình. */
+    /** Coordinates are on a 0..10000 scale of the screen width/height. */
     private fun gesture(x1: Int, y1: Int, x2: Int, y2: Int, ms: Int) {
         val sz = DeviceInfo.screenSize(this)
         fun fx(v: Int) = (v.coerceIn(0, 10000) * (sz.x - 1) / 10000f)
@@ -183,29 +196,14 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
     }
 
     private fun volume(a: String) {
-        val au = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val (stream, dir) = when (a) {
-            "up" -> AudioManager.STREAM_MUSIC to AudioManager.ADJUST_RAISE
-            "down" -> AudioManager.STREAM_MUSIC to AudioManager.ADJUST_LOWER
-            "mute" -> AudioManager.STREAM_MUSIC to AudioManager.ADJUST_TOGGLE_MUTE
-            "rup" -> AudioManager.STREAM_RING to AudioManager.ADJUST_RAISE
-            "rdown" -> AudioManager.STREAM_RING to AudioManager.ADJUST_LOWER
+        val dir = when (a) {
+            "up" -> AudioManager.ADJUST_RAISE
+            "down" -> AudioManager.ADJUST_LOWER
+            "mute" -> AudioManager.ADJUST_TOGGLE_MUTE
             else -> return
         }
-        au.adjustStreamVolume(stream, dir, AudioManager.FLAG_SHOW_UI)
-    }
-
-    private fun media(a: String) {
-        val code = when (a) {
-            "play" -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-            "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
-            "prev" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
-            "stop" -> KeyEvent.KEYCODE_MEDIA_STOP
-            else -> return
-        }
-        val au = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        au.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
-        au.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+        (getSystemService(Context.AUDIO_SERVICE) as AudioManager)
+            .adjustStreamVolume(AudioManager.STREAM_MUSIC, dir, AudioManager.FLAG_SHOW_UI)
     }
 
     private fun focusedInput(): AccessibilityNodeInfo? =
@@ -213,74 +211,81 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
 
     private fun setText(c: WebServer.Client, text: String, append: Boolean) {
         val n = focusedInput()
-        if (n == null || !n.isEditable) return err(c, "Chưa có ô nhập liệu nào được chọn trên điện thoại")
-        val cur = if (append && !n.isShowingHintTextCompat()) n.text?.toString() ?: "" else ""
+        if (n == null || !n.isEditable) return err(c, "Tap a text field on the phone first")
+        val hint = Build.VERSION.SDK_INT >= 26 && n.isShowingHintText
+        val cur = if (append && !hint) n.text?.toString() ?: "" else ""
         val b = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, cur + text)
         }
-        if (!n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) err(c, "Không nhập được chữ")
+        if (!n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) err(c, "Could not type into this field")
     }
-
-    private fun AccessibilityNodeInfo.isShowingHintTextCompat() =
-        Build.VERSION.SDK_INT >= 26 && isShowingHintText
 
     private fun imeEnter(c: WebServer.Client) {
-        val n = focusedInput() ?: return err(c, "Chưa có ô nhập liệu nào được chọn")
+        val n = focusedInput() ?: return err(c, "Tap a text field on the phone first")
         if (Build.VERSION.SDK_INT >= 30) {
             n.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
-        } else err(c, "Cần Android 11+")
+        } else err(c, "Enter key requires Android 11+")
     }
 
-    private fun setupTorch() {
-        try {
-            val cm = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            torchId = cm.cameraIdList.firstOrNull {
-                cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-            }
-            cm.registerTorchCallback(object : CameraManager.TorchCallback() {
-                override fun onTorchModeChanged(id: String, enabled: Boolean) {
-                    if (id == torchId) torchOn = enabled
-                }
-            }, main)
-        } catch (_: Exception) {}
-    }
-
-    private fun toggleTorch(c: WebServer.Client) {
-        val id = torchId ?: return err(c, "Không có đèn flash")
-        (getSystemService(Context.CAMERA_SERVICE) as CameraManager).setTorchMode(id, !torchOn)
-        ok(c, if (!torchOn) "Đã bật đèn pin" else "Đã tắt đèn pin")
-    }
-
-    @SuppressLint("WakelockTimeout")
-    @Suppress("DEPRECATION")
-    private fun wake() {
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        pm.newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "vit:wake"
-        ).acquire(1500)
-    }
-
-    // ================= Chụp màn hình / xem trực tiếp =================
-
-    private fun requestFull(c: WebServer.Client) {
-        if (Build.VERSION.SDK_INT < 30) return err(c, "Chụp ảnh qua web cần Android 11+")
-        cap.post { if (c !in fullWaiters) fullWaiters.add(c); capture() }
-    }
-
-    private fun kickCapture() = cap.post { capture() }
+    // ================= Screen capture =================
 
     private fun liveClients() = server?.clients?.filter { it.liveWidth > 0 } ?: emptyList()
 
-    /** Chạy trên luồng cap. Chỉ chụp khi có người cần => không tốn CPU khi rảnh. */
+    /** Called when MediaProjection starts or stops. */
+    fun onCaptureChanged() {
+        lastLive = null
+        updateCapture()
+        server?.clients?.forEach { it.send(info()) }
+    }
+
+    /** Pick the capture backend and the stream size from current viewers. */
+    private fun updateCapture() {
+        val w = liveClients().maxOfOrNull { it.liveWidth } ?: 0
+        val cs = CaptureService.instance
+        when {
+            cs != null -> cs.setWidth(w)
+            w == 0 -> {}
+            Build.VERSION.SDK_INT >= 30 -> cap.post { capture() }
+            else -> askConsent()
+        }
+    }
+
+    /** Opens the system screen-capture dialog on the phone (once per 15 s at most). */
+    private fun askConsent() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastConsentAsk < 15000) return
+        lastConsentAsk = now
+        notifyAll("ok", "Tap \"Start now\" on the phone to allow screen streaming")
+        main.post {
+            startActivity(Intent(this, ProjectionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    fun broadcastLive(data: ByteArray) {
+        lastLive = data
+        val crc = CRC32().apply { update(data) }.value
+        // Unchanged frame => send nothing
+        liveClients().forEach { if (it.lastFrameCrc != crc) { it.lastFrameCrc = crc; it.sendBin(data) } }
+    }
+
+    private fun requestFull(c: WebServer.Client) {
+        val cs = CaptureService.instance
+        when {
+            cs != null -> cs.requestFull(c)
+            Build.VERSION.SDK_INT >= 30 -> cap.post { if (c !in fullWaiters) fullWaiters.add(c); capture() }
+            else -> { askConsent(); err(c, "Allow screen capture on the phone, then try again") }
+        }
+    }
+
+    /** Accessibility screenshot loop (Android 11+, ~3 fps). Runs on the cap thread. */
     private fun capture() {
-        if (capturing || Build.VERSION.SDK_INT < 30) return
+        if (capturing || Build.VERSION.SDK_INT < 30 || CaptureService.instance != null) return
         if (fullWaiters.isEmpty() && liveClients().isEmpty()) return
         capturing = true
         takeScreenshot(Display.DEFAULT_DISPLAY, { cap.post(it) }, object : TakeScreenshotCallback {
             override fun onSuccess(res: ScreenshotResult) {
                 try { processShot(res) } catch (_: Throwable) {}
                 capturing = false
-                // ~3 khung/giây là giới hạn của hệ thống (333ms/lần)
                 if (liveClients().isNotEmpty() || fullWaiters.isNotEmpty()) cap.postDelayed({ capture() }, 340)
             }
 
@@ -289,7 +294,7 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
                 if (code == ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) {
                     cap.postDelayed({ capture() }, 150)
                 } else {
-                    fullWaiters.forEach { err(it, "Chụp màn hình lỗi (mã $code) – có thể do ứng dụng chặn chụp") }
+                    fullWaiters.forEach { err(it, "Screenshot failed (code $code), the app may block capture") }
                     fullWaiters.clear()
                     if (liveClients().isNotEmpty()) cap.postDelayed({ capture() }, 1000)
                 }
@@ -309,29 +314,14 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
             fullWaiters.forEach { it.sendBin(data) }
             fullWaiters.clear()
         }
-
-        val live = liveClients()
-        if (live.isNotEmpty()) {
-            // Nhóm theo độ phân giải để chỉ nén 1 lần cho mỗi mức
-            live.groupBy { it.liveWidth }.forEach { (w, cs) ->
-                val tw = minOf(w, bmp.width)
-                val th = bmp.height * tw / bmp.width
-                val scaled = if (tw == bmp.width) bmp else Bitmap.createScaledBitmap(bmp, tw, th, true)
-                val data = jpeg(scaled, 55, 1)
-                if (scaled !== bmp) scaled.recycle()
-                val crc = CRC32().apply { update(data) }.value
-                // Màn hình không đổi => không gửi gì, tiết kiệm mạng
-                cs.forEach { if (it.lastFrameCrc != crc) { it.lastFrameCrc = crc; it.sendBin(data) } }
-            }
+        val w = liveClients().maxOfOrNull { it.liveWidth } ?: 0
+        if (w > 0) {
+            val tw = minOf(w, bmp.width)
+            val scaled = if (tw == bmp.width) bmp
+            else Bitmap.createScaledBitmap(bmp, tw, bmp.height * tw / bmp.width, true)
+            broadcastLive(jpeg(scaled, 55, 1))
+            if (scaled !== bmp) scaled.recycle()
         }
         bmp.recycle()
-    }
-
-    /** Byte đầu là loại: 1 = khung trực tiếp, 2 = ảnh chụp đầy đủ. */
-    private fun jpeg(b: Bitmap, q: Int, type: Int): ByteArray {
-        val bo = ByteArrayOutputStream(64 * 1024)
-        bo.write(type)
-        b.compress(Bitmap.CompressFormat.JPEG, q, bo)
-        return bo.toByteArray()
     }
 }

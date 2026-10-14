@@ -26,7 +26,7 @@ class Prefs(ctx: Context) {
     }
 
     companion object {
-        /** Các địa chỉ IPv4 trong mạng LAN (Wi-Fi, hotspot, USB...) */
+        /** LAN IPv4 addresses (Wi-Fi, hotspot, USB tethering...) */
         fun localIps(): List<String> = try {
             NetworkInterface.getNetworkInterfaces().toList()
                 .filter { it.isUp && !it.isLoopback }

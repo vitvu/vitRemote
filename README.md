@@ -1,46 +1,48 @@
 # vitRemote
 
-Ứng dụng Android (Kotlin) dùng **Dịch vụ Trợ năng** để điều khiển điện thoại từ trình duyệt trong mạng LAN.
+Android app (Kotlin) that uses an **Accessibility Service** to let you view and control your phone from a web browser on the local network.
 
-## Tính năng
-- Phím điều hướng: **Back / Home / Đa nhiệm**
-- Hệ thống: thông báo, cài đặt nhanh, đóng thanh thông báo, khoá màn hình, menu nguồn, chia đôi màn hình, chụp màn hình lưu vào máy, đánh thức màn hình, đèn pin, ngăn ứng dụng
-- Âm thanh: tăng/giảm/tắt tiếng nhạc, âm lượng chuông, phát/tạm dừng/bài trước/bài sau
-- **Xem màn hình trực tiếp** + chạm / nhấn giữ / vuốt ngay trên ảnh (Android 11+)
-- **Tải ảnh chụp màn hình** chất lượng cao về máy tính (Android 11+)
-- Nhập chữ vào ô đang chọn, Enter, xoá ô
-- Thông tin thiết bị: model, Android, bản vá, CPU, pin (%, nhiệt độ, điện áp, sạc), RAM, bộ nhớ, màn hình, âm lượng, ứng dụng đang mở, IP, thời gian bật máy
-- Phím tắt trên web: `Esc` Back · `H` Home · `R` Đa nhiệm · `N` Thông báo · `+`/`-` Âm lượng · `M` Tắt tiếng · `Space` Phát/Dừng
-- Bảo vệ bằng **mã PIN 6 số**, đổi cổng tuỳ ý
+## Features
+- **Live screen streaming** with tap / long-press / swipe directly on the image, mouse wheel to scroll, right-click = Back
+  - MediaProjection: up to ~15 fps, any Android version (one-time "Start now" on the phone)
+  - Accessibility screenshot API: ~3 fps fallback on Android 11+ (no prompt)
+- Navigation: **Back / Home / Recents**
+- Volume −/+/mute, notifications, quick settings, lock screen, power menu
+- Download a full-resolution screenshot
+- Type text into the focused field, Enter, clear
+- Device details: model, Android/patch, CPU, battery, RAM, storage, display, volume, foreground app, IP, uptime
+- Keyboard shortcuts: `Esc` Back · `H` Home · `R` Recents · `N` Notifications · `+`/`-` volume · `M` mute
+- 6-digit **PIN**, configurable port
 
-## Nhẹ & nhanh
-- Máy chủ HTTP + WebSocket tự viết (không thư viện), I/O chặn → **~0% CPU khi rảnh**
-- Lệnh là chuỗi vài byte (`a:home`, `t:5000,5000`…), `TCP_NODELAY` → phản hồi tức thì (~4 ms trong LAN)
-- Trang web nén gzip (~5 KB), chỉ chụp màn hình khi có người xem; **khung hình giống trước không gửi lại**
-- APK ~1.4 MB
+## Lightweight by design
+- Hand-written HTTP + WebSocket server, no libraries; blocking I/O => ~0% CPU while idle
+- Commands are a few bytes (`a:home`, `t:5000,5000`), `TCP_NODELAY` => instant response
+- Screen is captured only while someone is watching; unchanged frames are never re-sent
+- Web page is gzipped (~6 KB); UI uses Material 3, Roboto and Material Symbols
+- APK ~1.5 MB
 
-## Cách dùng
-1. Cài APK, mở app → **Mở cài đặt Trợ năng** → bật **vitRemote**.
-2. Trên máy tính cùng Wi-Fi mở địa chỉ hiển thị trong app (vd. `http://192.168.1.17:8080`), nhập PIN.
-3. Qua USB: `adb forward tcp:8080 tcp:8080` rồi mở `http://localhost:8080`.
+## Usage
+1. Install the APK, open it → **Open Accessibility settings** → enable **vitRemote**.
+2. On a computer on the same Wi-Fi, open the address shown in the app (e.g. `http://192.168.1.17:8080`) and enter the PIN.
+3. Over USB: `adb forward tcp:8080 tcp:8080`, then open `http://localhost:8080`.
 
 ## Build
 ```
 ./gradlew assembleRelease
 ```
-APK: `app/build/outputs/apk/release/app-release.apk`
+Output: `app/build/outputs/apk/release/app-release.apk`
 
-## Giao thức WebSocket (`/ws?k=PIN`)
-| Lệnh | Ý nghĩa |
+## WebSocket protocol (`/ws?k=PIN`)
+| Command | Meaning |
 |---|---|
-| `a:back\|home\|recents\|notif\|qs\|dismiss\|power\|lock\|shot\|split\|apps` | Hành động hệ thống |
-| `t:x,y` / `l:x,y` | Chạm / nhấn giữ (toạ độ 0..10000) |
-| `s:x1,y1,x2,y2,ms` | Vuốt |
-| `v:up\|down\|mute\|rup\|rdown` · `m:play\|next\|prev\|stop` | Âm lượng · media |
-| `x:text` · `X` · `e` | Nhập chữ · xoá ô · Enter |
-| `f` · `w` · `i` · `p` | Đèn pin · đánh thức · thông tin · ping |
-| `c` · `L:width` | Ảnh chụp đầy đủ · xem trực tiếp (0 = tắt) |
+| `a:back\|home\|recents\|notif\|qs\|power\|lock\|shot` | Global action |
+| `t:x,y` / `l:x,y` | Tap / long-press (coordinates 0..10000) |
+| `s:x1,y1,x2,y2,ms` | Swipe |
+| `v:up\|down\|mute` | Media volume |
+| `x:text` · `X` · `e` | Type · clear field · Enter |
+| `c` · `L:width` | Full screenshot · live stream width (0 = off) |
+| `i` · `p` | Device info · ping |
 
-Ảnh gửi dạng nhị phân: byte đầu `1` = khung trực tiếp, `2` = ảnh chụp; phần còn lại là JPEG.
+Images are binary messages: first byte `1` = live frame, `2` = screenshot; the rest is JPEG.
 
-> ⚠️ Chỉ dùng trong mạng tin cậy: kết nối là HTTP/WS không mã hoá, chỉ có PIN bảo vệ.
+> ⚠️ Use on trusted networks only: traffic is plain HTTP/WS protected by the PIN.

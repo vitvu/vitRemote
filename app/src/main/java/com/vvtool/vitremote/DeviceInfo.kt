@@ -59,12 +59,10 @@ object DeviceInfo {
         val au = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         m["vol"] = au.getStreamVolume(AudioManager.STREAM_MUSIC)
         m["volMax"] = au.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        m["ring"] = au.getStreamVolume(AudioManager.STREAM_RING)
-        m["ringMax"] = au.getStreamMaxVolume(AudioManager.STREAM_RING)
         m["ringer"] = when (au.ringerMode) {
-            AudioManager.RINGER_MODE_SILENT -> "Im lặng"
-            AudioManager.RINGER_MODE_VIBRATE -> "Rung"
-            else -> "Chuông"
+            AudioManager.RINGER_MODE_SILENT -> "Silent"
+            AudioManager.RINGER_MODE_VIBRATE -> "Vibrate"
+            else -> "Ring"
         }
 
         m["ip"] = Prefs.localIps().joinToString(", ")

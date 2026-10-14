@@ -13,8 +13,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.zip.GZIPOutputStream
 
 /**
- * Máy chủ HTTP + WebSocket tối giản (RFC 6455), không phụ thuộc thư viện ngoài.
- * Mỗi kết nối 1 luồng, I/O chặn => CPU ~0% khi rảnh.
+ * Minimal HTTP + WebSocket server (RFC 6455), no external libraries.
+ * One thread per connection, blocking I/O => ~0% CPU while idle.
  */
 class WebServer(
     private val port: Int,
@@ -28,7 +28,7 @@ class WebServer(
         fun onClose(c: Client)
     }
 
-    // Nén gzip trang web 1 lần lúc khởi động để tiết kiệm băng thông
+    // Gzip the page once at startup to save bandwidth
     private val indexGz: ByteArray = ByteArrayOutputStream().also { bo ->
         GZIPOutputStream(bo).use { it.write(indexHtml) }
     }.toByteArray()
@@ -78,7 +78,7 @@ class WebServer(
             if (path == "/ws" && key != null) {
                 val k = query.split('&').firstOrNull { it.startsWith("k=") }?.substring(2)
                 if (k != pin) {
-                    respond(out, "401 Unauthorized", "text/plain", "Sai PIN".toByteArray())
+                    respond(out, "401 Unauthorized", "text/plain", "Wrong PIN".toByteArray())
                     return s.close()
                 }
                 val accept = Base64.encodeToString(
@@ -172,7 +172,7 @@ class WebServer(
     }
 
     class Client(private val socket: Socket, private val out: OutputStream) {
-        @Volatile var liveWidth = 0          // 0 = không xem trực tiếp
+        @Volatile var liveWidth = 0          // 0 = not watching
         @Volatile var lastFrameCrc = 0L
         val addr: String = socket.inetAddress?.hostAddress ?: "?"
 
@@ -184,7 +184,7 @@ class WebServer(
             if (socket.isClosed) return
             val n = data.size
             val hl = if (n < 126) 2 else if (n < 65536) 4 else 10
-            // Gộp header + payload vào 1 lần write => 1 gói TCP cho tin nhắn nhỏ
+            // Header + payload in one write => one TCP packet for small messages
             val buf = ByteArray(hl + n)
             buf[0] = (0x80 or op).toByte()
             when (hl) {

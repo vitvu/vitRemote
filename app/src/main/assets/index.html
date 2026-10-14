@@ -1,161 +1,220 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>vitRemote</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0&display=block">
 <style>
-:root{--bg:#0f1115;--card:#181b22;--b:#262a34;--t:#e7e9ee;--m:#8a90a0;--a:#6c8cff;--ok:#3ecf8e;--bad:#ff5d6c}
-@media (prefers-color-scheme:light){:root{--bg:#f3f4f8;--card:#fff;--b:#e1e4ec;--t:#14161c;--m:#6a7080;--a:#3d5afe}}
+:root{
+ --primary:#3d5afe;--on-primary:#fff;--primary-container:#dfe0ff;--on-primary-container:#00105c;
+ --surface:#fbf8ff;--surface-1:#f3f1fb;--surface-2:#eceaf6;--surface-3:#e5e3f0;
+ --on-surface:#1b1b21;--on-surface-var:#46464f;--outline:#c6c5d0;--error:#ba1a1a;--ok:#1e8e3e}
+@media (prefers-color-scheme:dark){:root{
+ --primary:#b9c3ff;--on-primary:#11277f;--primary-container:#2c3e96;--on-primary-container:#dfe0ff;
+ --surface:#121318;--surface-1:#1b1b21;--surface-2:#1f1f25;--surface-3:#292a2f;
+ --on-surface:#e4e1e9;--on-surface-var:#c6c5d0;--outline:#46464f;--error:#ffb4ab;--ok:#7dd99a}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--t);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--b);position:sticky;top:0;background:var(--bg);z-index:2}
-header b{font-size:18px}
-#st{margin-left:auto;font-size:13px;color:var(--m);display:flex;align-items:center;gap:6px}
-#dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}
-main{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:16px;padding:16px;max-width:1100px;margin:auto}
-@media (max-width:760px){main{grid-template-columns:1fr}}
-.card{background:var(--card);border:1px solid var(--b);border-radius:18px;padding:14px;margin-bottom:16px}
-h3{margin:0 0 10px;font-size:13px;color:var(--m);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
-button,select,input{font:inherit;color:inherit}
-button{background:var(--b);border:0;border-radius:12px;padding:10px 6px;cursor:pointer;transition:transform .06s,background .15s}
-button:hover{background:color-mix(in srgb,var(--a) 22%,var(--b))}
-button:active{transform:scale(.95)}
-button.p{background:var(--a);color:#fff}
-.g{display:grid;gap:8px}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.g2{grid-template-columns:1fr 1fr}
-#scr{position:relative;background:#000;border-radius:16px;overflow:hidden;display:flex;justify-content:center;min-height:200px;touch-action:none;user-select:none}
-#img{max-width:100%;max-height:70vh;display:block;cursor:crosshair;-webkit-user-drag:none}
-#ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;text-align:center;padding:20px;pointer-events:none}
-.row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
-input[type=text],input[type=password],select{background:var(--bg);border:1px solid var(--b);border-radius:12px;padding:9px 12px;min-width:0}
-input[type=text]{flex:1}
-table{width:100%;border-collapse:collapse;font-size:13px}
-td{padding:5px 2px;border-bottom:1px solid var(--b)}td:first-child{color:var(--m);width:42%}
-.bar{height:6px;background:var(--b);border-radius:3px;overflow:hidden;margin-top:3px}.bar i{display:block;height:100%;background:var(--a)}
-#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9}
-#login .card{width:300px;text-align:center}
-#login input{width:100%;text-align:center;font-size:22px;letter-spacing:.3em;margin:10px 0}
-#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--t);color:var(--bg);padding:9px 16px;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10}
-small{color:var(--m)}
+body{margin:0;background:var(--surface);color:var(--on-surface);font:400 14px/20px Roboto,system-ui,sans-serif}
+.ms{font-family:'Material Symbols Rounded';font-size:24px;line-height:1;font-weight:normal;font-style:normal;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;-webkit-font-smoothing:antialiased;font-feature-settings:'liga';user-select:none}
+.fill{font-variation-settings:'FILL' 1}
+/* top app bar */
+.bar{height:64px;display:flex;align-items:center;gap:12px;padding:0 16px;position:sticky;top:0;background:var(--surface);z-index:3}
+.bar h1{font-size:22px;font-weight:400;margin:0}
+.chip{margin-left:auto;display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid var(--outline);border-radius:8px;font-size:14px;font-weight:500;color:var(--on-surface-var)}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--error)}
+main{display:grid;grid-template-columns:auto minmax(280px,380px);gap:24px;justify-content:center;align-items:start;padding:8px 24px 32px;max-width:1200px;margin:auto}
+@media (max-width:820px){main{grid-template-columns:1fr;padding:8px 16px 24px}}
+.card{background:var(--surface-1);border-radius:24px;padding:20px;margin-bottom:16px}
+.title{font-size:16px;font-weight:500;margin:0 0 14px;display:flex;align-items:center;gap:8px}
+/* screen */
+.screen-col{display:flex;flex-direction:column;align-items:center;gap:12px}
+#scr{position:relative;background:#000;border-radius:28px;overflow:hidden;touch-action:none;user-select:none;box-shadow:0 1px 3px rgba(0,0,0,.3),0 4px 12px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;min-width:280px;min-height:500px}
+#img{display:block;height:min(78vh,900px);max-width:100%;object-fit:contain;cursor:pointer;-webkit-user-drag:none}
+#img:not([src]){display:none}
+#ph{color:#c6c5d0;text-align:center;padding:24px;max-width:260px;display:flex;flex-direction:column;align-items:center;gap:12px}
+#ph .ms{font-size:48px}
+.nav{display:flex;gap:8px;background:var(--surface-2);border-radius:28px;padding:6px}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+#fps{font-size:12px;color:var(--on-surface-var);min-height:16px}
+/* buttons */
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button::after{content:"";position:absolute;inset:0;background:currentColor;opacity:0;transition:opacity .15s}
+button:hover::after{opacity:.08}button:active::after{opacity:.14}
+.icon{width:48px;height:48px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--on-surface-var)}
+.nav .icon{width:64px;height:44px;border-radius:22px}
+.tonal{background:var(--surface-3);color:var(--on-surface)}
+.filled{background:var(--primary);color:var(--on-primary);height:40px;border-radius:20px;padding:0 20px 0 16px;display:inline-flex;align-items:center;gap:8px;font-weight:500}
+.filled.off{background:var(--primary-container);color:var(--on-primary-container)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border-radius:16px;background:var(--surface-2);font-size:12px;font-weight:500;color:var(--on-surface)}
+.seg{display:inline-flex;border:1px solid var(--outline);border-radius:20px;overflow:hidden;height:40px}
+.seg button{padding:0 14px;font-weight:500;font-size:13px;border-left:1px solid var(--outline)}
+.seg button:first-child{border-left:0}
+.seg button.on{background:var(--primary-container);color:var(--on-primary-container)}
+/* text field */
+.field{display:flex;align-items:center;gap:4px;border:1px solid var(--outline);border-radius:12px;padding:0 4px 0 14px;height:52px}
+.field:focus-within{border:2px solid var(--primary);padding-left:13px}
+.field input{flex:1;border:0;outline:0;background:none;color:inherit;font:inherit;font-size:16px;min-width:0}
+.hint{font-size:12px;color:var(--on-surface-var);margin:6px 4px 0}
+/* info list */
+.list{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+@media (min-width:821px){.list{grid-template-columns:1fr}}
+.li{display:flex;gap:14px;align-items:center;padding:8px 0}
+.li .ms{color:var(--primary);font-size:22px}
+.li small{display:block;font-size:12px;color:var(--on-surface-var);line-height:16px}
+.li div{min-width:0;flex:1}
+.li b{font-weight:400;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prog{height:4px;border-radius:2px;background:var(--surface-3);margin-top:4px;overflow:hidden}.prog i{display:block;height:100%;background:var(--primary);border-radius:2px}
+/* dialog + snackbar */
+#login{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9}
+.dialog{background:var(--surface-3);border-radius:28px;padding:24px;width:min(340px,90vw)}
+.dialog h2{font-size:24px;font-weight:400;margin:12px 0 8px;text-align:center}
+.dialog p{color:var(--on-surface-var);margin:0 0 20px;text-align:center}
+.dialog .field input{text-align:center;letter-spacing:.4em;font-size:22px}
+#lerr{color:var(--error);font-size:12px;min-height:18px;margin:6px 4px}
+#snack{position:fixed;left:50%;bottom:24px;transform:translate(-50%,24px);background:var(--on-surface);color:var(--surface);padding:14px 16px;border-radius:4px;box-shadow:0 3px 8px rgba(0,0,0,.3);opacity:0;transition:.2s;pointer-events:none;z-index:10;max-width:90vw}
+#snack.show{opacity:1;transform:translate(-50%,0)}
 </style>
 </head>
 <body>
-<div id="login"><div class="card"><b style="font-size:20px">vitRemote</b><br><small>Nhập mã PIN hiển thị trong ứng dụng</small>
-<input id="pin" type="password" inputmode="numeric" maxlength="6" autofocus><button class="p" style="width:100%" onclick="login()">Kết nối</button><div id="lerr" style="color:var(--bad);margin-top:8px"></div></div></div>
+<div id="login"><div class="dialog">
+ <div style="text-align:center"><span class="ms" style="color:var(--primary)">lock</span></div>
+ <h2>Enter PIN</h2><p>Shown in the vitRemote app on your phone</p>
+ <div class="field"><input id="pin" type="password" inputmode="numeric" maxlength="6" autofocus></div>
+ <div id="lerr"></div>
+ <div style="display:flex;justify-content:flex-end"><button class="filled" onclick="login()"><span class="ms">login</span>Connect</button></div>
+</div></div>
 
-<header><b>vitRemote</b><small id="dev"></small><span id="st"><span id="dot"></span><span id="stt">Đang kết nối…</span></span></header>
+<div class="bar">
+ <span class="ms" style="color:var(--primary)">cast</span><h1>vitRemote</h1>
+ <span class="chip"><i id="dot"></i><span id="stt">Connecting…</span></span>
+</div>
 
 <main>
-<section>
- <div class="card">
-  <h3>Màn hình</h3>
-  <div id="scr"><img id="img" alt=""><div id="ph">Bấm “Xem trực tiếp” để hiện màn hình.<br>Bấm = chạm · Giữ = nhấn giữ · Kéo = vuốt</div></div>
-  <div class="row">
-   <button class="p" id="lv" onclick="toggleLive()">▶ Xem trực tiếp</button>
-   <select id="lw" onchange="if(live)send('L:'+this.value)"><option value="360">360p (nhẹ)</option><option value="540" selected>540p</option><option value="720">720p</option><option value="1080">1080p</option></select>
-   <button onclick="send('c')">📷 Tải ảnh chụp</button>
-  </div>
-  <small id="fps"></small>
+<div class="screen-col">
+ <div id="scr"><img id="img" alt="Phone screen"><div id="ph"><span class="ms">screen_share</span><span id="phTxt">Starting stream…</span></div></div>
+ <div class="nav">
+  <button class="icon" title="Back (Esc)" onclick="a('back')"><span class="ms">arrow_back_ios_new</span></button>
+  <button class="icon" title="Home (H)" onclick="a('home')"><span class="ms">radio_button_unchecked</span></button>
+  <button class="icon" title="Recents (R)" onclick="a('recents')"><span class="ms">check_box_outline_blank</span></button>
  </div>
- <div class="card">
-  <h3>Điều hướng</h3>
-  <div class="g g3"><button onclick="a('back')">◀ Back</button><button class="p" onclick="a('home')">● Home</button><button onclick="a('recents')">■ Đa nhiệm</button></div>
+ <div class="tools">
+  <button class="filled" id="lv" onclick="toggleLive()"><span class="ms" id="lvi">pause</span><span id="lvt">Pause</span></button>
+  <div class="seg" id="seg"><button data-w="360">360p</button><button data-w="540">540p</button><button data-w="720">720p</button><button data-w="1080">1080p</button></div>
  </div>
-</section>
+ <div id="fps"></div>
+</div>
 
-<section>
+<div>
  <div class="card">
-  <h3>Hệ thống</h3>
-  <div class="g g4">
-   <button onclick="a('notif')">🔔 Thông báo</button><button onclick="a('qs')">⚙ Cài đặt nhanh</button><button onclick="a('dismiss')">✖ Đóng thanh</button><button onclick="a('shot')">📸 Chụp lưu máy</button>
-   <button onclick="a('lock')">🔒 Khoá màn</button><button onclick="send('w')">☀ Đánh thức</button><button onclick="a('power')">⏻ Menu nguồn</button><button onclick="a('split')">◫ Chia màn</button>
-   <button onclick="send('f')">🔦 Đèn pin</button><button onclick="a('apps')">▦ Ứng dụng</button><button onclick="swipe(5000,7500,5000,2500)">⇡ Vuốt lên</button><button onclick="swipe(5000,2500,5000,7500)">⇣ Vuốt xuống</button>
+  <div class="title"><span class="ms">tune</span>Controls</div>
+  <div class="grid">
+   <button class="tile" onclick="send('v:down')"><span class="ms">volume_down</span>Vol −</button>
+   <button class="tile" onclick="send('v:mute')"><span class="ms">volume_off</span>Mute</button>
+   <button class="tile" onclick="send('v:up')"><span class="ms">volume_up</span>Vol +</button>
+   <button class="tile" onclick="send('c')"><span class="ms">download</span>Screenshot</button>
+   <button class="tile" onclick="a('notif')"><span class="ms">notifications</span>Notifications</button>
+   <button class="tile" onclick="a('qs')"><span class="ms">toggle_on</span>Quick settings</button>
+   <button class="tile" onclick="a('lock')"><span class="ms">lock</span>Lock</button>
+   <button class="tile" onclick="a('power')"><span class="ms">power_settings_new</span>Power</button>
   </div>
  </div>
  <div class="card">
-  <h3>Âm thanh</h3>
-  <div class="g g3"><button onclick="send('v:down')">🔉 Giảm</button><button onclick="send('v:mute')">🔇 Tắt tiếng</button><button onclick="send('v:up')">🔊 Tăng</button>
-   <button onclick="send('v:rdown')">🔕 Chuông −</button><span></span><button onclick="send('v:rup')">🔔 Chuông +</button>
-   <button onclick="send('m:prev')">⏮</button><button onclick="send('m:play')">⏯</button><button onclick="send('m:next')">⏭</button></div>
+  <div class="title"><span class="ms">keyboard</span>Type text</div>
+  <div class="field"><input id="txt" placeholder="Text to send" onkeydown="if(event.key=='Enter')sendText()">
+   <button class="icon" title="Clear field" onclick="send('X')"><span class="ms">backspace</span></button>
+   <button class="icon" title="Enter" onclick="send('e')"><span class="ms">keyboard_return</span></button>
+   <button class="icon" title="Send" onclick="sendText()" style="color:var(--primary)"><span class="ms fill">send</span></button></div>
+  <div class="hint">Tap a text field on the phone first.</div>
  </div>
  <div class="card">
-  <h3>Nhập chữ</h3>
-  <small>Chạm vào ô nhập trên điện thoại trước, rồi gửi chữ.</small>
-  <div class="row"><input id="txt" type="text" placeholder="Nội dung…" onkeydown="if(event.key=='Enter'){sendText(event.shiftKey)}"><button class="p" onclick="sendText()">Gửi</button></div>
-  <div class="row"><button onclick="send('e')">↵ Enter</button><button onclick="send('X')">⌫ Xoá ô</button></div>
+  <div class="title"><span class="ms">info</span>Device</div>
+  <div class="list" id="info"></div>
  </div>
- <div class="card">
-  <h3>Thông tin thiết bị</h3>
-  <table id="info"></table>
- </div>
-</section>
+</div>
 </main>
-<div id="toast"></div>
+<div id="snack"></div>
 
 <script>
-let ws, live=false, url=null, frames=0, bytes=0, retry=0, timer;
+let ws,live=localStorage.live!=='0',lw=+(localStorage.lw||540),url=null,frames=0,bytes=0,retry=0,timer;
 const $=id=>document.getElementById(id);
-const toast=m=>{const t=$('toast');t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,1800)};
-const send=m=>{if(ws&&ws.readyState==1)ws.send(m);else toast('Chưa kết nối')};
+const snack=m=>{const s=$('snack');s.textContent=m;s.classList.add('show');clearTimeout(s._h);s._h=setTimeout(()=>s.classList.remove('show'),2500)};
+const send=m=>{if(ws&&ws.readyState==1)ws.send(m);else snack('Not connected')};
 const a=x=>send('a:'+x);
-const swipe=(x1,y1,x2,y2)=>send(`s:${x1},${y1},${x2},${y2},250`);
 function sendText(){const v=$('txt').value;if(!v)return;send('x:'+v);$('txt').value=''}
-
-function login(){const p=$('pin').value.trim();if(!p)return;localStorage.pin=p;connect()}
+function login(){const p=$('pin').value.trim();if(!p)return;localStorage.pin=p;retry=0;connect()}
 $('pin').addEventListener('keydown',e=>{if(e.key=='Enter')login()});
 
 function connect(){
- const pin=localStorage.pin; if(!pin)return;
+ const pin=localStorage.pin;if(!pin)return;
  ws=new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(pin)}`);
- ws.binaryType='arraybuffer';
- let opened=false;
- ws.onopen=()=>{opened=true;retry=0;$('login').style.display='none';setSt(1);if(live)send('L:'+$('lw').value);
+ ws.binaryType='arraybuffer';let opened=false;
+ ws.onopen=()=>{opened=true;retry=0;$('login').style.display='none';setSt(1);applyLive();
   clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)send('i')},3000)};
  ws.onclose=()=>{setSt(0);clearInterval(timer);
-  if(!opened&&retry==0){$('login').style.display='flex';$('lerr').textContent='Sai PIN hoặc không kết nối được';retry=1;return}
+  if(!opened&&retry==0){$('login').style.display='flex';$('lerr').textContent='Wrong PIN or phone unreachable';retry=1;return}
   setTimeout(connect,Math.min(5000,500*++retry))};
  ws.onmessage=e=>{
   if(typeof e.data!='string'){
    const b=new Uint8Array(e.data),blob=new Blob([b.subarray(1)],{type:'image/jpeg'});
-   if(b[0]==1){if(!live)return;frames++;bytes+=b.length;if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(blob);$('img').src=url;$('ph').style.display='none'}
-   else{const u=URL.createObjectURL(blob),l=document.createElement('a');l.href=u;l.download='screenshot_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';l.click();setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Đã tải ảnh chụp')}
+   if(b[0]==1){if(!live)return;frames++;bytes+=b.length;const u=URL.createObjectURL(blob);$('img').onload=()=>{if(url)URL.revokeObjectURL(url);url=u};$('img').src=u;$('ph').style.display='none'}
+   else{const u=URL.createObjectURL(blob),l=document.createElement('a');l.href=u;l.download='screenshot_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';l.click();setTimeout(()=>URL.revokeObjectURL(u),5000);snack('Screenshot saved')}
    return}
   const d=JSON.parse(e.data);
-  if(d.t=='info')showInfo(d);else if(d.t=='err')toast('⚠ '+d.m);else if(d.t=='ok')toast(d.m)};
+  if(d.t=='info')showInfo(d);else if(d.t=='err')snack(d.m);else if(d.t=='ok')snack(d.m)};
 }
-function setSt(on){$('dot').style.background=on?'var(--ok)':'var(--bad)';$('stt').textContent=on?'Đã kết nối':'Mất kết nối…'}
+function setSt(on){$('dot').style.background=on?'var(--ok)':'var(--error)';$('stt').textContent=on?'Connected':'Reconnecting…'}
 
-function toggleLive(){live=!live;send('L:'+(live?$('lw').value:0));$('lv').textContent=live?'⏸ Dừng xem':'▶ Xem trực tiếp';
- if(!live){$('fps').textContent='';$('ph').style.display='flex';$('img').removeAttribute('src')}}
-setInterval(()=>{if(live)$('fps').textContent=`${frames} khung/s · ${(bytes/1024).toFixed(0)} KB/s (chỉ gửi khi màn hình thay đổi)`;frames=0;bytes=0},1000);
+function applyLive(){
+ localStorage.live=live?1:0;localStorage.lw=lw;
+ $('lvi').textContent=live?'pause':'play_arrow';$('lvt').textContent=live?'Pause':'Watch';$('lv').classList.toggle('off',!live);
+ document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',+b.dataset.w==lw));
+ if(!live){$('img').removeAttribute('src');$('ph').style.display='flex';$('phTxt').textContent='Stream paused';$('fps').textContent=''}
+ else if(!$('img').src)$('phTxt').textContent='Starting stream…';
+ if(ws&&ws.readyState==1)ws.send('L:'+(live?lw:0));
+}
+function toggleLive(){live=!live;applyLive()}
+document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{lw=+b.dataset.w;applyLive()});
+setInterval(()=>{if(live&&$('img').src)$('fps').textContent=`${frames} fps · ${(bytes/1024).toFixed(0)} KB/s`;frames=0;bytes=0},1000);
 
-// Chạm / giữ / vuốt trên ảnh màn hình
-let down=null;
-const pos=e=>{const r=$('img').getBoundingClientRect();return[Math.round(Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))*1e4),Math.round(Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))*1e4),e.clientX,e.clientY]};
-$('img').addEventListener('pointerdown',e=>{e.preventDefault();$('img').setPointerCapture(e.pointerId);down=[...pos(e),performance.now()]});
-$('img').addEventListener('pointerup',e=>{if(!down)return;const p=pos(e),dt=Math.round(performance.now()-down[4]),moved=Math.hypot(p[2]-down[2],p[3]-down[3])>8;
+// tap / long-press / swipe on the screen image, wheel = scroll
+let down=null,wheelT=0;
+const img=$('img');
+const pos=e=>{const r=img.getBoundingClientRect();return[Math.round(Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))*1e4),Math.round(Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))*1e4),e.clientX,e.clientY]};
+img.addEventListener('pointerdown',e=>{e.preventDefault();img.setPointerCapture(e.pointerId);down=[...pos(e),performance.now()]});
+img.addEventListener('pointerup',e=>{if(!down)return;const p=pos(e),dt=Math.round(performance.now()-down[4]),moved=Math.hypot(p[2]-down[2],p[3]-down[3])>8;
  if(!moved)send(dt>450?`l:${down[0]},${down[1]}`:`t:${down[0]},${down[1]}`);
  else send(`s:${down[0]},${down[1]},${p[0]},${p[1]},${Math.min(2000,Math.max(80,dt))}`);down=null});
-$('img').addEventListener('contextmenu',e=>e.preventDefault());
+img.addEventListener('wheel',e=>{e.preventDefault();const n=performance.now();if(n-wheelT<250)return;wheelT=n;const p=pos(e),d=e.deltaY>0?-2000:2000;
+ send(`s:${p[0]},${p[1]},${p[0]},${Math.min(9500,Math.max(500,p[1]+d))},200`)},{passive:false});
+img.addEventListener('contextmenu',e=>{e.preventDefault();a('back')});
 
-// Phím tắt bàn phím
 document.addEventListener('keydown',e=>{if(e.target.tagName=='INPUT')return;
- const k={Escape:'a:back',Backspace:'a:back',h:'a:home',r:'a:recents',n:'a:notif','+':'v:up','-':'v:down',m:'v:mute',' ':'m:play'}[e.key];
+ const k={Escape:'a:back',h:'a:home',r:'a:recents',n:'a:notif','+':'v:up','-':'v:down',m:'v:mute'}[e.key];
  if(k){e.preventDefault();send(k)}});
 
-const fb=n=>n>1e9?(n/1e9).toFixed(1)+' GB':(n/1e6).toFixed(0)+' MB';
-const ft=s=>{const d=s/86400|0,h=s%86400/3600|0,m=s%3600/60|0;return(d?d+'n ':'')+h+'g '+m+'p'};
-const bar=p=>`<div class="bar"><i style="width:${p}%"></i></div>`;
+const fb=n=>n>=1e9?(n/1e9).toFixed(1)+' GB':(n/1e6).toFixed(0)+' MB';
+const ft=s=>{const d=s/86400|0,h=s%86400/3600|0,m=s%3600/60|0;return(d?d+'d ':'')+h+'h '+m+'m'};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function showInfo(d){
- $('dev').textContent=d.model;
  const ru=d.ramTotal-d.ramAvail,du=d.diskTotal-d.diskFree;
- const rows=[['Thiết bị',d.model+' ('+d.device+')'],['Android',`${d.android} · API ${d.sdk}`],['Bản vá bảo mật',d.patch],['CPU',`${d.cpu} · ${d.cores} nhân`],
-  ['Pin',`${d.battery}% ${d.charging?'⚡ đang sạc':''} · ${d.batTemp}°C · ${(d.batVolt/1000).toFixed(2)}V`+bar(d.battery)],
-  ['RAM',`${fb(ru)} / ${fb(d.ramTotal)}`+bar(ru/d.ramTotal*100)],['Bộ nhớ',`Trống ${fb(d.diskFree)} / ${fb(d.diskTotal)}`+bar(du/d.diskTotal*100)],
-  ['Màn hình',`${d.screen} · ${d.dpi} dpi · ${d.screenOn?'đang bật':'đang tắt'}`],['Âm lượng nhạc',`${d.vol}/${d.volMax}`+bar(d.vol/d.volMax*100)],
-  ['Chuông',`${d.ring}/${d.ringMax} · ${d.ringer}`],['Đèn pin',d.torch?'Bật':'Tắt'],['Ứng dụng đang mở',d.app||'—'],['IP',d.ip],
-  ['Thời gian bật máy',ft(d.uptime)],['Trình duyệt kết nối',d.clients],['vitRemote',d.ver+(d.canShot?'':' · xem màn hình cần Android 11+')]];
- $('info').innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+ const it=(ic,label,val,p)=>`<div class="li"><span class="ms">${ic}</span><div><small>${label}</small><b title="${esc(val)}">${esc(val)}</b>${p!=null?`<div class="prog"><i style="width:${Math.round(p)}%"></i></div>`:''}</div></div>`;
+ $('info').innerHTML=[
+  it('smartphone','Model',`${d.model} (${d.device})`),
+  it('android','Android',`${d.android} · API ${d.sdk} · patch ${d.patch}`),
+  it('memory','CPU',`${d.cpu} · ${d.cores} cores`),
+  it(d.charging?'battery_charging_full':'battery_full','Battery',`${d.battery}%${d.charging?' · charging':''} · ${d.batTemp}°C · ${(d.batVolt/1000).toFixed(2)} V`,d.battery),
+  it('memory_alt','RAM',`${fb(ru)} used of ${fb(d.ramTotal)}`,ru/d.ramTotal*100),
+  it('hard_drive','Storage',`${fb(d.diskFree)} free of ${fb(d.diskTotal)}`,du/d.diskTotal*100),
+  it('fit_screen','Display',`${d.screen} · ${d.dpi} dpi · ${d.screenOn?'on':'off'}`),
+  it('volume_up','Media volume',`${d.vol}/${d.volMax} · ${d.ringer}`,d.vol/d.volMax*100),
+  it('apps','Foreground app',d.app||'—'),
+  it('wifi','IP address',d.ip),
+  it('schedule','Uptime',ft(d.uptime)),
+  it('screen_share','Capture',`${d.capture} · ${d.clients} viewer(s) · v${d.ver}`)
+ ].join('');
 }
 if(localStorage.pin)connect();
 </script>
