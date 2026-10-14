@@ -254,13 +254,11 @@ If vitRemote is useful to you, consider buying me a coffee ☕
 
 [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/vudinhviet)
 
-**https://paypal.me/vudinhviet**
-
 Starring ⭐ the repository also helps others find it.
 
 ## License
 
-Copyright © 2026 Vũ Đình Việt ([@vitvu](https://github.com/vitvu)).
+Copyright © 2026 Vu Dinh Viet ([@vitvu](https://github.com/vitvu)).
 
 Released under the [MIT License](LICENSE). You may use, modify and distribute this software,
 provided the copyright notice and license text are included in all copies or substantial portions.
