@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.VitRemote" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/seed</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

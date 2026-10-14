@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vitRemote</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--b:#262a34;--t:#e7e9ee;--m:#8a90a0;--a:#6c8cff;--ok:#3ecf8e;--bad:#ff5d6c}
+@media (prefers-color-scheme:light){:root{--bg:#f3f4f8;--card:#fff;--b:#e1e4ec;--t:#14161c;--m:#6a7080;--a:#3d5afe}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--b);position:sticky;top:0;background:var(--bg);z-index:2}
+header b{font-size:18px}
+#st{margin-left:auto;font-size:13px;color:var(--m);display:flex;align-items:center;gap:6px}
+#dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}
+main{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:16px;padding:16px;max-width:1100px;margin:auto}
+@media (max-width:760px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--b);border-radius:18px;padding:14px;margin-bottom:16px}
+h3{margin:0 0 10px;font-size:13px;color:var(--m);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--b);border:0;border-radius:12px;padding:10px 6px;cursor:pointer;transition:transform .06s,background .15s}
+button:hover{background:color-mix(in srgb,var(--a) 22%,var(--b))}
+button:active{transform:scale(.95)}
+button.p{background:var(--a);color:#fff}
+.g{display:grid;gap:8px}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.g2{grid-template-columns:1fr 1fr}
+#scr{position:relative;background:#000;border-radius:16px;overflow:hidden;display:flex;justify-content:center;min-height:200px;touch-action:none;user-select:none}
+#img{max-width:100%;max-height:70vh;display:block;cursor:crosshair;-webkit-user-drag:none}
+#ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;text-align:center;padding:20px;pointer-events:none}
+.row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+input[type=text],input[type=password],select{background:var(--bg);border:1px solid var(--b);border-radius:12px;padding:9px 12px;min-width:0}
+input[type=text]{flex:1}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{padding:5px 2px;border-bottom:1px solid var(--b)}td:first-child{color:var(--m);width:42%}
+.bar{height:6px;background:var(--b);border-radius:3px;overflow:hidden;margin-top:3px}.bar i{display:block;height:100%;background:var(--a)}
+#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9}
+#login .card{width:300px;text-align:center}
+#login input{width:100%;text-align:center;font-size:22px;letter-spacing:.3em;margin:10px 0}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--t);color:var(--bg);padding:9px 16px;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10}
+small{color:var(--m)}
+</style>
+</head>
+<body>
+<div id="login"><div class="card"><b style="font-size:20px">vitRemote</b><br><small>Nhập mã PIN hiển thị trong ứng dụng</small>
+<input id="pin" type="password" inputmode="numeric" maxlength="6" autofocus><button class="p" style="width:100%" onclick="login()">Kết nối</button><div id="lerr" style="color:var(--bad);margin-top:8px"></div></div></div>
+
+<header><b>vitRemote</b><small id="dev"></small><span id="st"><span id="dot"></span><span id="stt">Đang kết nối…</span></span></header>
+
+<main>
+<section>
+ <div class="card">
+  <h3>Màn hình</h3>
+  <div id="scr"><img id="img" alt=""><div id="ph">Bấm “Xem trực tiếp” để hiện màn hình.<br>Bấm = chạm · Giữ = nhấn giữ · Kéo = vuốt</div></div>
+  <div class="row">
+   <button class="p" id="lv" onclick="toggleLive()">▶ Xem trực tiếp</button>
+   <select id="lw" onchange="if(live)send('L:'+this.value)"><option value="360">360p (nhẹ)</option><option value="540" selected>540p</option><option value="720">720p</option><option value="1080">1080p</option></select>
+   <button onclick="send('c')">📷 Tải ảnh chụp</button>
+  </div>
+  <small id="fps"></small>
+ </div>
+ <div class="card">
+  <h3>Điều hướng</h3>
+  <div class="g g3"><button onclick="a('back')">◀ Back</button><button class="p" onclick="a('home')">● Home</button><button onclick="a('recents')">■ Đa nhiệm</button></div>
+ </div>
+</section>
+
+<section>
+ <div class="card">
+  <h3>Hệ thống</h3>
+  <div class="g g4">
+   <button onclick="a('notif')">🔔 Thông báo</button><button onclick="a('qs')">⚙ Cài đặt nhanh</button><button onclick="a('dismiss')">✖ Đóng thanh</button><button onclick="a('shot')">📸 Chụp lưu máy</button>
+   <button onclick="a('lock')">🔒 Khoá màn</button><button onclick="send('w')">☀ Đánh thức</button><button onclick="a('power')">⏻ Menu nguồn</button><button onclick="a('split')">◫ Chia màn</button>
+   <button onclick="send('f')">🔦 Đèn pin</button><button onclick="a('apps')">▦ Ứng dụng</button><button onclick="swipe(5000,7500,5000,2500)">⇡ Vuốt lên</button><button onclick="swipe(5000,2500,5000,7500)">⇣ Vuốt xuống</button>
+  </div>
+ </div>
+ <div class="card">
+  <h3>Âm thanh</h3>
+  <div class="g g3"><button onclick="send('v:down')">🔉 Giảm</button><button onclick="send('v:mute')">🔇 Tắt tiếng</button><button onclick="send('v:up')">🔊 Tăng</button>
+   <button onclick="send('v:rdown')">🔕 Chuông −</button><span></span><button onclick="send('v:rup')">🔔 Chuông +</button>
+   <button onclick="send('m:prev')">⏮</button><button onclick="send('m:play')">⏯</button><button onclick="send('m:next')">⏭</button></div>
+ </div>
+ <div class="card">
+  <h3>Nhập chữ</h3>
+  <small>Chạm vào ô nhập trên điện thoại trước, rồi gửi chữ.</small>
+  <div class="row"><input id="txt" type="text" placeholder="Nội dung…" onkeydown="if(event.key=='Enter'){sendText(event.shiftKey)}"><button class="p" onclick="sendText()">Gửi</button></div>
+  <div class="row"><button onclick="send('e')">↵ Enter</button><button onclick="send('X')">⌫ Xoá ô</button></div>
+ </div>
+ <div class="card">
+  <h3>Thông tin thiết bị</h3>
+  <table id="info"></table>
+ </div>
+</section>
+</main>
+<div id="toast"></div>
+
+<script>
+let ws, live=false, url=null, frames=0, bytes=0, retry=0, timer;
+const $=id=>document.getElementById(id);
+const toast=m=>{const t=$('toast');t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,1800)};
+const send=m=>{if(ws&&ws.readyState==1)ws.send(m);else toast('Chưa kết nối')};
+const a=x=>send('a:'+x);
+const swipe=(x1,y1,x2,y2)=>send(`s:${x1},${y1},${x2},${y2},250`);
+function sendText(){const v=$('txt').value;if(!v)return;send('x:'+v);$('txt').value=''}
+
+function login(){const p=$('pin').value.trim();if(!p)return;localStorage.pin=p;connect()}
+$('pin').addEventListener('keydown',e=>{if(e.key=='Enter')login()});
+
+function connect(){
+ const pin=localStorage.pin; if(!pin)return;
+ ws=new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(pin)}`);
+ ws.binaryType='arraybuffer';
+ let opened=false;
+ ws.onopen=()=>{opened=true;retry=0;$('login').style.display='none';setSt(1);if(live)send('L:'+$('lw').value);
+  clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)send('i')},3000)};
+ ws.onclose=()=>{setSt(0);clearInterval(timer);
+  if(!opened&&retry==0){$('login').style.display='flex';$('lerr').textContent='Sai PIN hoặc không kết nối được';retry=1;return}
+  setTimeout(connect,Math.min(5000,500*++retry))};
+ ws.onmessage=e=>{
+  if(typeof e.data!='string'){
+   const b=new Uint8Array(e.data),blob=new Blob([b.subarray(1)],{type:'image/jpeg'});
+   if(b[0]==1){if(!live)return;frames++;bytes+=b.length;if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(blob);$('img').src=url;$('ph').style.display='none'}
+   else{const u=URL.createObjectURL(blob),l=document.createElement('a');l.href=u;l.download='screenshot_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';l.click();setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Đã tải ảnh chụp')}
+   return}
+  const d=JSON.parse(e.data);
+  if(d.t=='info')showInfo(d);else if(d.t=='err')toast('⚠ '+d.m);else if(d.t=='ok')toast(d.m)};
+}
+function setSt(on){$('dot').style.background=on?'var(--ok)':'var(--bad)';$('stt').textContent=on?'Đã kết nối':'Mất kết nối…'}
+
+function toggleLive(){live=!live;send('L:'+(live?$('lw').value:0));$('lv').textContent=live?'⏸ Dừng xem':'▶ Xem trực tiếp';
+ if(!live){$('fps').textContent='';$('ph').style.display='flex';$('img').removeAttribute('src')}}
+setInterval(()=>{if(live)$('fps').textContent=`${frames} khung/s · ${(bytes/1024).toFixed(0)} KB/s (chỉ gửi khi màn hình thay đổi)`;frames=0;bytes=0},1000);
+
+// Chạm / giữ / vuốt trên ảnh màn hình
+let down=null;
+const pos=e=>{const r=$('img').getBoundingClientRect();return[Math.round(Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))*1e4),Math.round(Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))*1e4),e.clientX,e.clientY]};
+$('img').addEventListener('pointerdown',e=>{e.preventDefault();$('img').setPointerCapture(e.pointerId);down=[...pos(e),performance.now()]});
+$('img').addEventListener('pointerup',e=>{if(!down)return;const p=pos(e),dt=Math.round(performance.now()-down[4]),moved=Math.hypot(p[2]-down[2],p[3]-down[3])>8;
+ if(!moved)send(dt>450?`l:${down[0]},${down[1]}`:`t:${down[0]},${down[1]}`);
+ else send(`s:${down[0]},${down[1]},${p[0]},${p[1]},${Math.min(2000,Math.max(80,dt))}`);down=null});
+$('img').addEventListener('contextmenu',e=>e.preventDefault());
+
+// Phím tắt bàn phím
+document.addEventListener('keydown',e=>{if(e.target.tagName=='INPUT')return;
+ const k={Escape:'a:back',Backspace:'a:back',h:'a:home',r:'a:recents',n:'a:notif','+':'v:up','-':'v:down',m:'v:mute',' ':'m:play'}[e.key];
+ if(k){e.preventDefault();send(k)}});
+
+const fb=n=>n>1e9?(n/1e9).toFixed(1)+' GB':(n/1e6).toFixed(0)+' MB';
+const ft=s=>{const d=s/86400|0,h=s%86400/3600|0,m=s%3600/60|0;return(d?d+'n ':'')+h+'g '+m+'p'};
+const bar=p=>`<div class="bar"><i style="width:${p}%"></i></div>`;
+function showInfo(d){
+ $('dev').textContent=d.model;
+ const ru=d.ramTotal-d.ramAvail,du=d.diskTotal-d.diskFree;
+ const rows=[['Thiết bị',d.model+' ('+d.device+')'],['Android',`${d.android} · API ${d.sdk}`],['Bản vá bảo mật',d.patch],['CPU',`${d.cpu} · ${d.cores} nhân`],
+  ['Pin',`${d.battery}% ${d.charging?'⚡ đang sạc':''} · ${d.batTemp}°C · ${(d.batVolt/1000).toFixed(2)}V`+bar(d.battery)],
+  ['RAM',`${fb(ru)} / ${fb(d.ramTotal)}`+bar(ru/d.ramTotal*100)],['Bộ nhớ',`Trống ${fb(d.diskFree)} / ${fb(d.diskTotal)}`+bar(du/d.diskTotal*100)],
+  ['Màn hình',`${d.screen} · ${d.dpi} dpi · ${d.screenOn?'đang bật':'đang tắt'}`],['Âm lượng nhạc',`${d.vol}/${d.volMax}`+bar(d.vol/d.volMax*100)],
+  ['Chuông',`${d.ring}/${d.ringMax} · ${d.ringer}`],['Đèn pin',d.torch?'Bật':'Tắt'],['Ứng dụng đang mở',d.app||'—'],['IP',d.ip],
+  ['Thời gian bật máy',ft(d.uptime)],['Trình duyệt kết nối',d.clients],['vitRemote',d.ver+(d.canShot?'':' · xem màn hình cần Android 11+')]];
+ $('info').innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+}
+if(localStorage.pin)connect();
+</script>
+</body>
+</html>

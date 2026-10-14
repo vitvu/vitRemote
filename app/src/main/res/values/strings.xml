@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">vitRemote</string>
+    <string name="service_label">vitRemote – điều khiển từ xa</string>
+    <string name="service_desc">Cho phép điều khiển điện thoại qua trình duyệt web trong mạng LAN: phím Home/Back/Đa nhiệm, âm lượng, chụp màn hình, chạm/vuốt, nhập chữ. Máy chủ chỉ chạy khi dịch vụ được bật và yêu cầu mã PIN.</string>
+</resources>
