@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
@@ -41,7 +42,9 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
     private val capThread = HandlerThread("vit-cap").apply { start() }
     private val cap = Handler(capThread.looper)
 
-    @Volatile private var foregroundApp = ""
+    // Typing state: the node's text can lag behind fast keystrokes, so build on what we last set
+    private var typedText: String? = null
+    private var typedAt = 0L
     @Volatile private var lastLive: ByteArray? = null
     private var lastConsentAsk = 0L
     private val startedAt = SystemClock.elapsedRealtime()
@@ -59,11 +62,7 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
         applyConfig()
     }
 
-    override fun onAccessibilityEvent(e: AccessibilityEvent?) {
-        if (e?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            e.packageName?.toString()?.let { if (it != foregroundApp) foregroundApp = it }
-        }
-    }
+    override fun onAccessibilityEvent(e: AccessibilityEvent?) {}
 
     override fun onInterrupt() {}
 
@@ -114,14 +113,16 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
         if (msg.isEmpty()) return
         val arg = if (msg.length > 2) msg.substring(2) else ""
         try {
+            if (msg[0] in "atlse") typedText = null // focus/content may change
             when (msg[0]) {
                 'a' -> globalAct(c, arg)
                 't' -> { val p = nums(arg); gesture(p[0], p[1], p[0], p[1], 40) }
                 'l' -> { val p = nums(arg); gesture(p[0], p[1], p[0], p[1], 700) }
                 's' -> { val p = nums(arg); gesture(p[0], p[1], p[2], p[3], p.getOrElse(4) { 250 }) }
                 'v' -> volume(arg)
-                'x' -> setText(c, arg, append = true)
-                'X' -> setText(c, "", append = false)
+                'x' -> type(c) { it + msg.substring(2) }
+                'b' -> type(c) { if (it.isEmpty()) it else it.substring(0, it.offsetByCodePoints(it.length, -1)) }
+                'P' -> powerKey()
                 'e' -> imeEnter(c)
                 'i' -> c.send(info())
                 'c' -> requestFull(c)
@@ -158,7 +159,6 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
         val sz = DeviceInfo.screenSize(this)
         return DeviceInfo.json(
             this, mapOf(
-                "app" to foregroundApp,
                 "clients" to clientCount,
                 "svcUptime" to (SystemClock.elapsedRealtime() - startedAt) / 1000,
                 "capture" to captureMode(),
@@ -209,15 +209,45 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
     private fun focusedInput(): AccessibilityNodeInfo? =
         rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
 
-    private fun setText(c: WebServer.Client, text: String, append: Boolean) {
+    private fun type(c: WebServer.Client, edit: (String) -> String) {
         val n = focusedInput()
         if (n == null || !n.isEditable) return err(c, "Tap a text field on the phone first")
         val hint = Build.VERSION.SDK_INT >= 26 && n.isShowingHintText
-        val cur = if (append && !hint) n.text?.toString() ?: "" else ""
+        val now = SystemClock.uptimeMillis()
+        val cur = typedText?.takeIf { now - typedAt < 1500 } ?: if (hint) "" else n.text?.toString() ?: ""
+        val next = edit(cur)
         val b = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, cur + text)
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, next)
         }
-        if (!n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) err(c, "Could not type into this field")
+        if (n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)) {
+            typedText = next; typedAt = now
+            if (Build.VERSION.SDK_INT >= 18) {
+                n.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, Bundle().apply {
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, next.length)
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, next.length)
+                })
+            }
+        } else err(c, "Could not type into this field")
+    }
+
+    /** Short press of the power key: screen on => lock, screen off => wake. */
+    @Suppress("DEPRECATION")
+    private fun powerKey() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (pm.isInteractive) {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            when {
+                Build.VERSION.SDK_INT >= 28 -> performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+                dpm.isAdminActive(android.content.ComponentName(this, AdminReceiver::class.java)) -> dpm.lockNow()
+                else -> {
+                    performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
+                    notifyAll("err", "Enable \"Screen lock\" in the vitRemote app to turn the screen off")
+                }
+            }
+        } else {
+            pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "vit:wake")
+                .acquire(1000)
+        }
     }
 
     private fun imeEnter(c: WebServer.Client) {

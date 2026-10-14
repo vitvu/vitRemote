@@ -5,185 +5,136 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>vitRemote</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0&display=block">
 <style>
-:root{
- --primary:#3d5afe;--on-primary:#fff;--primary-container:#dfe0ff;--on-primary-container:#00105c;
- --surface:#fbf8ff;--surface-1:#f3f1fb;--surface-2:#eceaf6;--surface-3:#e5e3f0;
- --on-surface:#1b1b21;--on-surface-var:#46464f;--outline:#c6c5d0;--error:#ba1a1a;--ok:#1e8e3e}
-@media (prefers-color-scheme:dark){:root{
- --primary:#b9c3ff;--on-primary:#11277f;--primary-container:#2c3e96;--on-primary-container:#dfe0ff;
- --surface:#121318;--surface-1:#1b1b21;--surface-2:#1f1f25;--surface-3:#292a2f;
- --on-surface:#e4e1e9;--on-surface-var:#c6c5d0;--outline:#46464f;--error:#ffb4ab;--ok:#7dd99a}}
+:root{--primary:#3d5afe;--on-primary:#fff;--pc:#dfe0ff;--on-pc:#00105c;--bg:#fbf8ff;--s1:#f3f1fb;--s2:#e9e7f3;--on:#1b1b21;--var:#46464f;--outline:#c6c5d0;--error:#ba1a1a;--ok:#1e8e3e}
+@media (prefers-color-scheme:dark){:root{--primary:#b9c3ff;--on-primary:#11277f;--pc:#2c3e96;--on-pc:#dfe0ff;--bg:#121318;--s1:#1b1b21;--s2:#292a2f;--on:#e4e1e9;--var:#c6c5d0;--outline:#46464f;--error:#ffb4ab;--ok:#7dd99a}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--surface);color:var(--on-surface);font:400 14px/20px Roboto,system-ui,sans-serif}
-.ms{font-family:'Material Symbols Rounded';font-size:24px;line-height:1;font-weight:normal;font-style:normal;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;-webkit-font-smoothing:antialiased;font-feature-settings:'liga';user-select:none}
-.fill{font-variation-settings:'FILL' 1}
-/* top app bar */
-.bar{height:64px;display:flex;align-items:center;gap:12px;padding:0 16px;position:sticky;top:0;background:var(--surface);z-index:3}
-.bar h1{font-size:22px;font-weight:400;margin:0}
-.chip{margin-left:auto;display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid var(--outline);border-radius:8px;font-size:14px;font-weight:500;color:var(--on-surface-var)}
-.chip i{width:8px;height:8px;border-radius:50%;background:var(--error)}
-main{display:grid;grid-template-columns:auto minmax(280px,380px);gap:24px;justify-content:center;align-items:start;padding:8px 24px 32px;max-width:1200px;margin:auto}
-@media (max-width:820px){main{grid-template-columns:1fr;padding:8px 16px 24px}}
-.card{background:var(--surface-1);border-radius:24px;padding:20px;margin-bottom:16px}
-.title{font-size:16px;font-weight:500;margin:0 0 14px;display:flex;align-items:center;gap:8px}
-/* screen */
-.screen-col{display:flex;flex-direction:column;align-items:center;gap:12px}
-#scr{position:relative;background:#000;border-radius:28px;overflow:hidden;touch-action:none;user-select:none;box-shadow:0 1px 3px rgba(0,0,0,.3),0 4px 12px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;min-width:280px;min-height:500px}
-#img{display:block;height:min(78vh,900px);max-width:100%;object-fit:contain;cursor:pointer;-webkit-user-drag:none}
-#img:not([src]){display:none}
-#ph{color:#c6c5d0;text-align:center;padding:24px;max-width:260px;display:flex;flex-direction:column;align-items:center;gap:12px}
-#ph .ms{font-size:48px}
-.nav{display:flex;gap:8px;background:var(--surface-2);border-radius:28px;padding:6px}
-.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
-#fps{font-size:12px;color:var(--on-surface-var);min-height:16px}
-/* buttons */
-button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:var(--bg);color:var(--on);font:400 14px/20px Roboto,system-ui,sans-serif}
+.ms{font-family:'Material Symbols Rounded';font-size:24px;line-height:1;font-weight:normal;font-style:normal;white-space:nowrap;-webkit-font-smoothing:antialiased;font-feature-settings:'liga';user-select:none}
+.app{height:100%;display:flex;gap:28px;padding:20px;justify-content:center;align-items:stretch}
+.phone{height:100%;display:flex;gap:12px;align-items:center;min-width:0}
+.col{height:100%;display:flex;flex-direction:column;align-items:center;gap:10px}
+#scr{flex:1;min-height:0;aspect-ratio:9/19.5;background:#000;border-radius:24px;overflow:hidden;position:relative;touch-action:none;user-select:none;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+#img{width:100%;height:100%;object-fit:contain;display:block;cursor:pointer;-webkit-user-drag:none}
+#img:not([src]){visibility:hidden}
+#ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#9a9aa6;pointer-events:none}
+#ph .ms{font-size:40px}
+.nav{display:flex;gap:4px;background:var(--s1);border-radius:28px;padding:4px}
+.side{display:flex;flex-direction:column;gap:10px}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent;touch-action:none}
 button::after{content:"";position:absolute;inset:0;background:currentColor;opacity:0;transition:opacity .15s}
-button:hover::after{opacity:.08}button:active::after{opacity:.14}
-.icon{width:48px;height:48px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--on-surface-var)}
-.nav .icon{width:64px;height:44px;border-radius:22px}
-.tonal{background:var(--surface-3);color:var(--on-surface)}
-.filled{background:var(--primary);color:var(--on-primary);height:40px;border-radius:20px;padding:0 20px 0 16px;display:inline-flex;align-items:center;gap:8px;font-weight:500}
-.filled.off{background:var(--primary-container);color:var(--on-primary-container)}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border-radius:16px;background:var(--surface-2);font-size:12px;font-weight:500;color:var(--on-surface)}
-.seg{display:inline-flex;border:1px solid var(--outline);border-radius:20px;overflow:hidden;height:40px}
-.seg button{padding:0 14px;font-weight:500;font-size:13px;border-left:1px solid var(--outline)}
-.seg button:first-child{border-left:0}
-.seg button.on{background:var(--primary-container);color:var(--on-primary-container)}
-/* text field */
-.field{display:flex;align-items:center;gap:4px;border:1px solid var(--outline);border-radius:12px;padding:0 4px 0 14px;height:52px}
-.field:focus-within{border:2px solid var(--primary);padding-left:13px}
-.field input{flex:1;border:0;outline:0;background:none;color:inherit;font:inherit;font-size:16px;min-width:0}
-.hint{font-size:12px;color:var(--on-surface-var);margin:6px 4px 0}
-/* info list */
-.list{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
-@media (min-width:821px){.list{grid-template-columns:1fr}}
-.li{display:flex;gap:14px;align-items:center;padding:8px 0}
-.li .ms{color:var(--primary);font-size:22px}
-.li small{display:block;font-size:12px;color:var(--on-surface-var);line-height:16px}
+button:hover::after{opacity:.08}button:active::after,button.held::after{opacity:.16}
+.ib{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--s1);color:var(--var)}
+.nav .ib{width:68px;height:44px;border-radius:22px;background:none}
+#pw{background:var(--pc);color:var(--on-pc)}
+#pw .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(var(--primary) var(--p,0%),transparent 0);-webkit-mask:radial-gradient(circle,transparent 21px,#000 22px);mask:radial-gradient(circle,transparent 21px,#000 22px)}
+.panel{width:290px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.head{display:flex;align-items:center;gap:10px}
+.head h1{font-size:22px;font-weight:400;margin:0}
+.chip{margin-left:auto;display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--outline);border-radius:8px;font-size:12px;font-weight:500;color:var(--var)}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--error)}
+.card{background:var(--s1);border-radius:20px;padding:6px 16px;overflow:auto;min-height:0}
+.li{display:flex;gap:14px;align-items:center;padding:9px 0}
+.li .ms{color:var(--primary);font-size:20px}
 .li div{min-width:0;flex:1}
+.li small{display:block;font-size:11px;color:var(--var);line-height:14px}
 .li b{font-weight:400;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.prog{height:4px;border-radius:2px;background:var(--surface-3);margin-top:4px;overflow:hidden}.prog i{display:block;height:100%;background:var(--primary);border-radius:2px}
-/* dialog + snackbar */
-#login{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9}
-.dialog{background:var(--surface-3);border-radius:28px;padding:24px;width:min(340px,90vw)}
-.dialog h2{font-size:24px;font-weight:400;margin:12px 0 8px;text-align:center}
-.dialog p{color:var(--on-surface-var);margin:0 0 20px;text-align:center}
-.dialog .field input{text-align:center;letter-spacing:.4em;font-size:22px}
-#lerr{color:var(--error);font-size:12px;min-height:18px;margin:6px 4px}
-#snack{position:fixed;left:50%;bottom:24px;transform:translate(-50%,24px);background:var(--on-surface);color:var(--surface);padding:14px 16px;border-radius:4px;box-shadow:0 3px 8px rgba(0,0,0,.3);opacity:0;transition:.2s;pointer-events:none;z-index:10;max-width:90vw}
+.prog{height:3px;border-radius:2px;background:var(--s2);margin-top:4px;overflow:hidden}.prog i{display:block;height:100%;background:var(--primary)}
+.kb{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--var);padding:0 4px}
+.kb.on{color:var(--primary)}
+#fps{font-size:11px;color:var(--var);height:14px}
+@media (max-width:760px){.panel{display:none}.app{padding:12px}}
+#login{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9}
+.dialog{background:var(--s2);border-radius:28px;padding:24px;width:min(320px,90vw);text-align:center}
+.dialog h2{font-size:22px;font-weight:400;margin:10px 0 18px}
+.dialog input{width:100%;height:52px;border:1px solid var(--outline);border-radius:12px;background:none;color:inherit;font:inherit;font-size:22px;letter-spacing:.4em;text-align:center;outline:0}
+.dialog input:focus{border:2px solid var(--primary)}
+#lerr{color:var(--error);font-size:12px;min-height:18px;margin:6px 0}
+.filled{background:var(--primary);color:var(--on-primary);height:40px;border-radius:20px;padding:0 24px;font-weight:500;width:100%}
+#snack{position:fixed;left:50%;bottom:20px;transform:translate(-50%,20px);background:var(--on);color:var(--bg);padding:12px 16px;border-radius:6px;opacity:0;transition:.2s;pointer-events:none;z-index:10}
 #snack.show{opacity:1;transform:translate(-50%,0)}
 </style>
 </head>
 <body>
 <div id="login"><div class="dialog">
- <div style="text-align:center"><span class="ms" style="color:var(--primary)">lock</span></div>
- <h2>Enter PIN</h2><p>Shown in the vitRemote app on your phone</p>
- <div class="field"><input id="pin" type="password" inputmode="numeric" maxlength="6" autofocus></div>
+ <span class="ms" style="color:var(--primary);font-size:32px">lock</span>
+ <h2>Enter PIN</h2>
+ <input id="pin" type="password" inputmode="numeric" maxlength="6" autofocus>
  <div id="lerr"></div>
- <div style="display:flex;justify-content:flex-end"><button class="filled" onclick="login()"><span class="ms">login</span>Connect</button></div>
+ <button class="filled" onclick="login()">Connect</button>
 </div></div>
 
-<div class="bar">
- <span class="ms" style="color:var(--primary)">cast</span><h1>vitRemote</h1>
- <span class="chip"><i id="dot"></i><span id="stt">Connecting…</span></span>
-</div>
-
-<main>
-<div class="screen-col">
- <div id="scr"><img id="img" alt="Phone screen"><div id="ph"><span class="ms">screen_share</span><span id="phTxt">Starting stream…</span></div></div>
- <div class="nav">
-  <button class="icon" title="Back (Esc)" onclick="a('back')"><span class="ms">arrow_back_ios_new</span></button>
-  <button class="icon" title="Home (H)" onclick="a('home')"><span class="ms">radio_button_unchecked</span></button>
-  <button class="icon" title="Recents (R)" onclick="a('recents')"><span class="ms">check_box_outline_blank</span></button>
- </div>
- <div class="tools">
-  <button class="filled" id="lv" onclick="toggleLive()"><span class="ms" id="lvi">pause</span><span id="lvt">Pause</span></button>
-  <div class="seg" id="seg"><button data-w="360">360p</button><button data-w="540">540p</button><button data-w="720">720p</button><button data-w="1080">1080p</button></div>
- </div>
- <div id="fps"></div>
-</div>
-
-<div>
- <div class="card">
-  <div class="title"><span class="ms">tune</span>Controls</div>
-  <div class="grid">
-   <button class="tile" onclick="send('v:down')"><span class="ms">volume_down</span>Vol −</button>
-   <button class="tile" onclick="send('v:mute')"><span class="ms">volume_off</span>Mute</button>
-   <button class="tile" onclick="send('v:up')"><span class="ms">volume_up</span>Vol +</button>
-   <button class="tile" onclick="send('c')"><span class="ms">download</span>Screenshot</button>
-   <button class="tile" onclick="a('notif')"><span class="ms">notifications</span>Notifications</button>
-   <button class="tile" onclick="a('qs')"><span class="ms">toggle_on</span>Quick settings</button>
-   <button class="tile" onclick="a('lock')"><span class="ms">lock</span>Lock</button>
-   <button class="tile" onclick="a('power')"><span class="ms">power_settings_new</span>Power</button>
+<div class="app">
+ <div class="phone">
+  <div class="col">
+   <div id="scr"><img id="img" alt=""><div id="ph"><span class="ms">screen_share</span><span id="phTxt">Connecting…</span></div></div>
+   <div class="nav">
+    <button class="ib" title="Back (Esc)" onclick="a('back')"><span class="ms">arrow_back_ios_new</span></button>
+    <button class="ib" title="Home" onclick="a('home')"><span class="ms">radio_button_unchecked</span></button>
+    <button class="ib" title="Recents" onclick="a('recents')"><span class="ms">check_box_outline_blank</span></button>
+   </div>
+   <div id="fps"></div>
+  </div>
+  <div class="side">
+   <button class="ib" id="pw" title="Tap: lock / wake · Hold: power menu"><span class="ring"></span><span class="ms">power_settings_new</span></button>
+   <button class="ib" id="vu" title="Volume up"><span class="ms">volume_up</span></button>
+   <button class="ib" id="vd" title="Volume down"><span class="ms">volume_down</span></button>
+   <button class="ib" title="Save screenshot" onclick="send('c')"><span class="ms">photo_camera</span></button>
   </div>
  </div>
- <div class="card">
-  <div class="title"><span class="ms">keyboard</span>Type text</div>
-  <div class="field"><input id="txt" placeholder="Text to send" onkeydown="if(event.key=='Enter')sendText()">
-   <button class="icon" title="Clear field" onclick="send('X')"><span class="ms">backspace</span></button>
-   <button class="icon" title="Enter" onclick="send('e')"><span class="ms">keyboard_return</span></button>
-   <button class="icon" title="Send" onclick="sendText()" style="color:var(--primary)"><span class="ms fill">send</span></button></div>
-  <div class="hint">Tap a text field on the phone first.</div>
- </div>
- <div class="card">
-  <div class="title"><span class="ms">info</span>Device</div>
-  <div class="list" id="info"></div>
+ <div class="panel">
+  <div class="head"><span class="ms" style="color:var(--primary)">cast</span><h1>vitRemote</h1><span class="chip"><i id="dot"></i><span id="stt">Offline</span></span></div>
+  <div class="kb" id="kb"><span class="ms">keyboard</span><span>Type anywhere to send text</span></div>
+  <div class="card" id="info"></div>
  </div>
 </div>
-</main>
 <div id="snack"></div>
 
 <script>
-let ws,live=localStorage.live!=='0',lw=+(localStorage.lw||540),url=null,frames=0,bytes=0,retry=0,timer;
+let ws,url=null,frames=0,bytes=0,retry=0,timer,lw=0;
 const $=id=>document.getElementById(id);
 const snack=m=>{const s=$('snack');s.textContent=m;s.classList.add('show');clearTimeout(s._h);s._h=setTimeout(()=>s.classList.remove('show'),2500)};
-const send=m=>{if(ws&&ws.readyState==1)ws.send(m);else snack('Not connected')};
+const send=m=>{if(ws&&ws.readyState==1)ws.send(m)};
 const a=x=>send('a:'+x);
-function sendText(){const v=$('txt').value;if(!v)return;send('x:'+v);$('txt').value=''}
 function login(){const p=$('pin').value.trim();if(!p)return;localStorage.pin=p;retry=0;connect()}
-$('pin').addEventListener('keydown',e=>{if(e.key=='Enter')login()});
+$('pin').addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter')login()});
 
 function connect(){
  const pin=localStorage.pin;if(!pin)return;
  ws=new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(pin)}`);
  ws.binaryType='arraybuffer';let opened=false;
- ws.onopen=()=>{opened=true;retry=0;$('login').style.display='none';setSt(1);applyLive();
-  clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)send('i')},3000)};
+ ws.onopen=()=>{opened=true;retry=0;$('login').style.display='none';setSt(1);lw=0;stream();
+  clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)send('i')},4000)};
  ws.onclose=()=>{setSt(0);clearInterval(timer);
   if(!opened&&retry==0){$('login').style.display='flex';$('lerr').textContent='Wrong PIN or phone unreachable';retry=1;return}
   setTimeout(connect,Math.min(5000,500*++retry))};
  ws.onmessage=e=>{
   if(typeof e.data!='string'){
    const b=new Uint8Array(e.data),blob=new Blob([b.subarray(1)],{type:'image/jpeg'});
-   if(b[0]==1){if(!live)return;frames++;bytes+=b.length;const u=URL.createObjectURL(blob);$('img').onload=()=>{if(url)URL.revokeObjectURL(url);url=u};$('img').src=u;$('ph').style.display='none'}
+   if(b[0]==1){frames++;bytes+=b.length;const u=URL.createObjectURL(blob),im=$('img');im.onload=()=>{if(url&&url!=u)URL.revokeObjectURL(url);url=u};im.src=u;$('ph').style.display='none'}
    else{const u=URL.createObjectURL(blob),l=document.createElement('a');l.href=u;l.download='screenshot_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';l.click();setTimeout(()=>URL.revokeObjectURL(u),5000);snack('Screenshot saved')}
    return}
   const d=JSON.parse(e.data);
-  if(d.t=='info')showInfo(d);else if(d.t=='err')snack(d.m);else if(d.t=='ok')snack(d.m)};
+  if(d.t=='info')showInfo(d);else if(d.t=='err'||d.t=='ok')snack(d.m)};
 }
-function setSt(on){$('dot').style.background=on?'var(--ok)':'var(--error)';$('stt').textContent=on?'Connected':'Reconnecting…'}
+function setSt(on){$('dot').style.background=on?'var(--ok)':'var(--error)';$('stt').textContent=on?'Online':'Offline';if(!on){$('ph').style.display='flex';$('phTxt').textContent='Reconnecting…'}}
 
-function applyLive(){
- localStorage.live=live?1:0;localStorage.lw=lw;
- $('lvi').textContent=live?'pause':'play_arrow';$('lvt').textContent=live?'Pause':'Watch';$('lv').classList.toggle('off',!live);
- document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',+b.dataset.w==lw));
- if(!live){$('img').removeAttribute('src');$('ph').style.display='flex';$('phTxt').textContent='Stream paused';$('fps').textContent=''}
- else if(!$('img').src)$('phTxt').textContent='Starting stream…';
- if(ws&&ws.readyState==1)ws.send('L:'+(live?lw:0));
+// Stream resolution follows the on-screen size; paused while the tab is hidden
+function stream(){
+ let w=0;if(!document.hidden){const px=$('scr').clientWidth*(devicePixelRatio||1);w=[360,540,720,1080].find(x=>x>=px*.9)||1080}
+ if(w!=lw){lw=w;send('L:'+w)}
 }
-function toggleLive(){live=!live;applyLive()}
-document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{lw=+b.dataset.w;applyLive()});
-setInterval(()=>{if(live&&$('img').src)$('fps').textContent=`${frames} fps · ${(bytes/1024).toFixed(0)} KB/s`;frames=0;bytes=0},1000);
+addEventListener('resize',()=>{clearTimeout(stream._t);stream._t=setTimeout(stream,300)});
+document.addEventListener('visibilitychange',stream);
+setInterval(()=>{if(lw)$('fps').textContent=frames?`${frames} fps · ${(bytes/1024).toFixed(0)} KB/s`:'Live · idle';frames=0;bytes=0},1000);
 
-// tap / long-press / swipe on the screen image, wheel = scroll
-let down=null,wheelT=0;
-const img=$('img');
-const pos=e=>{const r=img.getBoundingClientRect();return[Math.round(Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))*1e4),Math.round(Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))*1e4),e.clientX,e.clientY]};
-img.addEventListener('pointerdown',e=>{e.preventDefault();img.setPointerCapture(e.pointerId);down=[...pos(e),performance.now()]});
+// Tap / long-press / swipe on the screen, wheel = scroll, right click = back
+let down=null,wheelT=0;const img=$('img');
+const pos=e=>{const r=img.getBoundingClientRect(),nw=img.naturalWidth||1,nh=img.naturalHeight||1,s=Math.min(r.width/nw,r.height/nh),w=nw*s,h=nh*s,l=r.left+(r.width-w)/2,t=r.top+(r.height-h)/2;
+ return[Math.round(Math.min(1,Math.max(0,(e.clientX-l)/w))*1e4),Math.round(Math.min(1,Math.max(0,(e.clientY-t)/h))*1e4),e.clientX,e.clientY]};
+img.addEventListener('pointerdown',e=>{if(e.button)return;e.preventDefault();img.setPointerCapture(e.pointerId);down=[...pos(e),performance.now()]});
 img.addEventListener('pointerup',e=>{if(!down)return;const p=pos(e),dt=Math.round(performance.now()-down[4]),moved=Math.hypot(p[2]-down[2],p[3]-down[3])>8;
  if(!moved)send(dt>450?`l:${down[0]},${down[1]}`:`t:${down[0]},${down[1]}`);
  else send(`s:${down[0]},${down[1]},${p[0]},${p[1]},${Math.min(2000,Math.max(80,dt))}`);down=null});
@@ -191,30 +142,46 @@ img.addEventListener('wheel',e=>{e.preventDefault();const n=performance.now();if
  send(`s:${p[0]},${p[1]},${p[0]},${Math.min(9500,Math.max(500,p[1]+d))},200`)},{passive:false});
 img.addEventListener('contextmenu',e=>{e.preventDefault();a('back')});
 
-document.addEventListener('keydown',e=>{if(e.target.tagName=='INPUT')return;
- const k={Escape:'a:back',h:'a:home',r:'a:recents',n:'a:notif','+':'v:up','-':'v:down',m:'v:mute'}[e.key];
- if(k){e.preventDefault();send(k)}});
+// Power: tap = lock/wake, hold 0.6 s = power menu
+(()=>{const b=$('pw');let t0,raf,fired;
+ const loop=()=>{const p=Math.min(1,(performance.now()-t0)/600);b.style.setProperty('--p',p*100+'%');if(p>=1&&!fired){fired=true;a('power')}if(!fired)raf=requestAnimationFrame(loop)};
+ b.onpointerdown=e=>{b.setPointerCapture(e.pointerId);t0=performance.now();fired=false;b.classList.add('held');loop()};
+ const end=()=>{if(t0==null)return;cancelAnimationFrame(raf);b.classList.remove('held');b.style.setProperty('--p','0%');if(!fired)send('P');t0=null};
+ b.onpointerup=end;b.onpointercancel=()=>{cancelAnimationFrame(raf);t0=null;b.classList.remove('held');b.style.setProperty('--p','0%')};
+})();
+// Volume: hold to repeat
+for(const[id,cmd]of[['vu','v:up'],['vd','v:down']]){const b=$(id);let t;
+ b.onpointerdown=e=>{b.setPointerCapture(e.pointerId);send(cmd);t=setTimeout(function r(){send(cmd);t=setTimeout(r,150)},450)};
+ b.onpointerup=b.onpointercancel=()=>clearTimeout(t)}
+
+// Physical keyboard => focused field on the phone
+document.addEventListener('keydown',e=>{
+ if($('login').style.display!='none'||e.ctrlKey||e.metaKey||e.altKey)return;
+ let m=null;
+ if(e.key=='Escape')m='a:back';else if(e.key=='Backspace')m='b';else if(e.key=='Enter')m='e';
+ else if(e.key.length==1)m='x:'+e.key;
+ if(m){e.preventDefault();send(m);flash()}});
+document.addEventListener('paste',e=>{const t=e.clipboardData.getData('text');if(t){e.preventDefault();send('x:'+t);flash()}});
+const flash=()=>{const k=$('kb');k.classList.add('on');clearTimeout(k._t);k._t=setTimeout(()=>k.classList.remove('on'),300)};
 
 const fb=n=>n>=1e9?(n/1e9).toFixed(1)+' GB':(n/1e6).toFixed(0)+' MB';
 const ft=s=>{const d=s/86400|0,h=s%86400/3600|0,m=s%3600/60|0;return(d?d+'d ':'')+h+'h '+m+'m'};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function showInfo(d){
+ if(d.w&&d.h)$('scr').style.aspectRatio=`${d.w}/${d.h}`;
  const ru=d.ramTotal-d.ramAvail,du=d.diskTotal-d.diskFree;
  const it=(ic,label,val,p)=>`<div class="li"><span class="ms">${ic}</span><div><small>${label}</small><b title="${esc(val)}">${esc(val)}</b>${p!=null?`<div class="prog"><i style="width:${Math.round(p)}%"></i></div>`:''}</div></div>`;
  $('info').innerHTML=[
-  it('smartphone','Model',`${d.model} (${d.device})`),
-  it('android','Android',`${d.android} · API ${d.sdk} · patch ${d.patch}`),
-  it('memory','CPU',`${d.cpu} · ${d.cores} cores`),
-  it(d.charging?'battery_charging_full':'battery_full','Battery',`${d.battery}%${d.charging?' · charging':''} · ${d.batTemp}°C · ${(d.batVolt/1000).toFixed(2)} V`,d.battery),
-  it('memory_alt','RAM',`${fb(ru)} used of ${fb(d.ramTotal)}`,ru/d.ramTotal*100),
-  it('hard_drive','Storage',`${fb(d.diskFree)} free of ${fb(d.diskTotal)}`,du/d.diskTotal*100),
-  it('fit_screen','Display',`${d.screen} · ${d.dpi} dpi · ${d.screenOn?'on':'off'}`),
-  it('volume_up','Media volume',`${d.vol}/${d.volMax} · ${d.ringer}`,d.vol/d.volMax*100),
-  it('apps','Foreground app',d.app||'—'),
-  it('wifi','IP address',d.ip),
+  it('smartphone','Device',d.model),
+  it('android','Android',`${d.android} · API ${d.sdk}`),
+  it(d.charging?'battery_charging_full':'battery_full','Battery',`${d.battery}%${d.charging?' · charging':''} · ${d.batTemp}°C`,d.battery),
+  it('memory_alt','RAM',`${fb(ru)} / ${fb(d.ramTotal)}`,ru/d.ramTotal*100),
+  it('hard_drive','Storage',`${fb(du)} / ${fb(d.diskTotal)}`,du/d.diskTotal*100),
+  it('volume_up','Volume',`${d.vol}/${d.volMax}`,d.vol/d.volMax*100),
+  it('wifi','IP',d.ip),
   it('schedule','Uptime',ft(d.uptime)),
-  it('screen_share','Capture',`${d.capture} · ${d.clients} viewer(s) · v${d.ver}`)
  ].join('');
+ stream();
 }
 if(localStorage.pin)connect();
 </script>

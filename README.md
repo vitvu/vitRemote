@@ -7,11 +7,11 @@ Android app (Kotlin) that uses an **Accessibility Service** to let you view and 
   - MediaProjection: up to ~15 fps, any Android version (one-time "Start now" on the phone)
   - Accessibility screenshot API: ~3 fps fallback on Android 11+ (no prompt)
 - Navigation: **Back / Home / Recents**
-- Volume −/+/mute, notifications, quick settings, lock screen, power menu
-- Download a full-resolution screenshot
-- Type text into the focused field, Enter, clear
-- Device details: model, Android/patch, CPU, battery, RAM, storage, display, volume, foreground app, IP, uptime
-- Keyboard shortcuts: `Esc` Back · `H` Home · `R` Recents · `N` Notifications · `+`/`-` volume · `M` mute
+- **Power key**: tap = screen off / wake, hold 0.6 s = power menu (Android < 9 needs the optional "Screen lock" device-admin permission)
+- Volume −/+ (hold to repeat), full-resolution screenshot download
+- **Type directly from your keyboard** into the focused field on the phone (Backspace, Enter, paste supported); `Esc` = Back
+- Device details: model, Android, battery, RAM, storage, volume, IP, uptime
+- Stream resolution adapts to the window size and pauses when the tab is hidden
 - 6-digit **PIN**, configurable port
 
 ## Lightweight by design
@@ -38,8 +38,9 @@ Output: `app/build/outputs/apk/release/app-release.apk`
 | `a:back\|home\|recents\|notif\|qs\|power\|lock\|shot` | Global action |
 | `t:x,y` / `l:x,y` | Tap / long-press (coordinates 0..10000) |
 | `s:x1,y1,x2,y2,ms` | Swipe |
-| `v:up\|down\|mute` | Media volume |
-| `x:text` · `X` · `e` | Type · clear field · Enter |
+| `v:up\|down` | Media volume |
+| `x:text` · `b` · `X` · `e` | Type · backspace · clear field · Enter |
+| `P` | Power key: screen off / wake |
 | `c` · `L:width` | Full screenshot · live stream width (0 = off) |
 | `i` · `p` | Device info · ping |
 

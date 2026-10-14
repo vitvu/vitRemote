@@ -1,6 +1,8 @@
 <resources>
     <style name="Theme.VitRemote" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">#FFB9C3FF</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
