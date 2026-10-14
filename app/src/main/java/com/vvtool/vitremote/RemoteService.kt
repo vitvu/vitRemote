@@ -175,6 +175,7 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
                 "svcUptime" to (SystemClock.elapsedRealtime() - startedAt) / 1000,
                 "capture" to captureMode(),
                 "video" to (CaptureService.instance != null),
+                "encMs" to (CaptureService.instance?.encMs?.toInt() ?: 0),
                 "touch" to (Build.VERSION.SDK_INT >= 26),
                 "w" to sz.x, "h" to sz.y,
                 "ver" to (try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "" })

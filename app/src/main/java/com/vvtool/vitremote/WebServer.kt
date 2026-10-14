@@ -34,13 +34,24 @@ class WebServer(
     }.toByteArray()
 
     val clients = CopyOnWriteArrayList<Client>()
-    @Volatile private var server: ServerSocket? = null
+    private val servers = ArrayList<ServerSocket>()
 
+    /** http on [port]; https on port+1 (secure context => WebCodecs, lowest latency). */
     fun start() {
         val ss = ServerSocket()
         ss.reuseAddress = true
         ss.bind(InetSocketAddress(port), 16)
-        server = ss
+        servers.add(ss); acceptLoop(ss)
+        try {
+            Tls.context?.serverSocketFactory?.createServerSocket()?.let { ts ->
+                ts.reuseAddress = true
+                ts.bind(InetSocketAddress(port + 1), 16)
+                servers.add(ts); acceptLoop(ts)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun acceptLoop(ss: ServerSocket) {
         Thread({
             while (!ss.isClosed) {
                 val s = try { ss.accept() } catch (_: Exception) { break }
@@ -50,8 +61,8 @@ class WebServer(
     }
 
     fun stop() {
-        try { server?.close() } catch (_: Exception) {}
-        server = null
+        servers.forEach { try { it.close() } catch (_: Exception) {} }
+        servers.clear()
         clients.forEach { it.close() }
         clients.clear()
     }
@@ -192,7 +203,7 @@ class WebServer(
                 if (vq.size > 2) vq.clear()
                 needKey = false
             } else if (needKey) return false
-            else if (vq.size > 4) { vq.clear(); needKey = true; return false }
+            else if (vq.size > 2) { vq.clear(); needKey = true; return false }
             vq.offer(data)
             startSender()
             return true

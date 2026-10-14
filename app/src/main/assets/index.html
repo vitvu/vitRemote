@@ -91,6 +91,7 @@ button:hover::after{opacity:.08}button:active::after,button.held::after{opacity:
  <div class="panel">
   <div class="head"><span class="ms" style="color:var(--primary)">cast</span><h1>vitRemote</h1><span class="chip"><i id="dot"></i><span id="stt">Offline</span></span></div>
   <div class="seg" id="seg"><button data-q="auto"><span class="ms">check</span>Auto</button><button data-q="low"><span class="ms">check</span>Low</button><button data-q="med"><span class="ms">check</span>Medium</button><button data-q="high"><span class="ms">check</span>High</button></div>
+  <a id="fast" class="kb" style="display:none;text-decoration:none;color:var(--primary)"><span class="ms">bolt</span><span>Switch to low-latency mode (HTTPS)</span></a>
   <div class="kb" id="kb"><span class="ms">keyboard</span><span>Type anywhere to send text</span></div>
   <div class="card" id="info"></div>
  </div>
@@ -129,10 +130,12 @@ function fragment(seq,dts,dur,key,data){
 }
 
 /* ================= Video player (MSE, low-latency) ================= */
-const P={ms:null,sb:null,queue:[],ready:false,key:false,seq:1,dts:0,dur:16,last:0,w:0,h:0};
+const P={ms:null,sb:null,queue:[],ready:false,key:false,seq:1,dts:0,dur:1,last:0,w:0,h:0,arr:{}};
+if(vid.requestVideoFrameCallback){const cb=(now,m)=>{const k=Math.round(m.mediaTime*1000),t0=P.arr[k];if(t0){lat(m.expectedDisplayTime-t0);delete P.arr[k]}vid.requestVideoFrameCallback(cb)};vid.requestVideoFrameCallback(cb)}
 function hex(n){return n.toString(16).padStart(2,'0')}
 // WebCodecs (lowest latency) is only exposed on secure origins: localhost / https
-const WC={dec:null,csd:null,key:false,ts:0};
+const WC={dec:null,csd:null,key:false,ts:0,arr:new Map()};
+let latSum=0,latN=0;const lat=v=>{if(v>=0&&v<5000){latSum+=v;latN++}};
 function onConfig(d){
  const w=d[1]<<8|d[2],h=d[3]<<8|d[4];let sps,pps;
  for(const n of nalus(d.subarray(5))){const t=n[0]&31;if(t==7)sps=n;else if(t==8)pps=n}
@@ -140,14 +143,14 @@ function onConfig(d){
  if(window.VideoDecoder){
   try{WC.dec&&WC.dec.close()}catch(e){}
   WC.csd=d.subarray(5).slice();WC.key=false;
-  WC.dec=new VideoDecoder({output:f=>{if(cv.width!=f.displayWidth||cv.height!=f.displayHeight){cv.width=f.displayWidth;cv.height=f.displayHeight}cx.drawImage(f,0,0);f.close()},error:()=>{WC.dec=null}});
+  WC.dec=new VideoDecoder({output:f=>{const t0=WC.arr.get(f.timestamp);if(t0){lat(performance.now()-t0);WC.arr.delete(f.timestamp)}if(cv.width!=f.displayWidth||cv.height!=f.displayHeight){cv.width=f.displayWidth;cv.height=f.displayHeight}cx.drawImage(f,0,0);f.close()},error:()=>{WC.dec=null}});
   WC.dec.configure({codec:`avc1.${hex(sps[1])}${hex(sps[2])}${hex(sps[3])}`,optimizeForLatency:true});
   return;
  }
  if(!window.MediaSource)return;
  const mime=`video/mp4; codecs="avc1.${hex(sps[1])}${hex(sps[2])}${hex(sps[3])}"`;
  if(!MediaSource.isTypeSupported(mime)){snack('Browser cannot play H.264');return}
- Object.assign(P,{queue:[initSeg(sps,pps,w,h)],ready:false,key:false,seq:1,dts:0,w,h});
+ Object.assign(P,{queue:[initSeg(sps,pps,w,h)],ready:false,key:false,seq:1,dts:0,w,h,arr:{}});
  const ms=new MediaSource();P.ms=ms;
  vid.src=URL.createObjectURL(ms);
  ms.addEventListener('sourceopen',()=>{
@@ -165,7 +168,8 @@ function onFrame(d){
   if(WC.dec.decodeQueueSize>8&&!key)return; // decoder behind: skip until it catches up
   WC.key=true;
   const data=key?cat([WC.csd,d.subarray(2)]):d.subarray(2);
-  WC.dec.decode(new EncodedVideoChunk({type:key?'key':'delta',timestamp:(WC.ts+=16666),data}));
+  const ts=(WC.ts+=16666);WC.arr.set(ts,performance.now());if(WC.arr.size>300)WC.arr.clear();
+  WC.dec.decode(new EncodedVideoChunk({type:key?'key':'delta',timestamp:ts,data}));
   frames++;bytes+=d.length;showMode('canvas');return;
  }
  if(!P.ms||(!P.key&&!key))return;
@@ -174,6 +178,7 @@ function onFrame(d){
  for(const n of nalus(d.subarray(2))){const t=n[0]&31;if(t==7||t==8||t==9)continue;parts.push(U(u32(n.length)),n)}
  if(!parts.length)return;
  // Each frame gets a short duration so playback waits at the live edge instead of building a buffer
+ P.arr[P.dts]=performance.now();if(P.dts%600==0)for(const k in P.arr)if(k<P.dts-600)delete P.arr[k];
  P.queue.push(fragment(P.seq++,P.dts,P.dur,key,cat(parts)));P.dts+=P.dur;
  frames++;bytes+=d.length;pumpSB();
  showMode('video');
@@ -191,10 +196,10 @@ function pumpSB(){
 setInterval(()=>{
  if(!vid.buffered.length)return;
  const lag=vid.buffered.end(vid.buffered.length-1)-vid.currentTime;
- if(lag>1){vid.currentTime=vid.buffered.end(vid.buffered.length-1)-0.05;return}
- const r=lag>0.25?1.6:lag>0.08?1.2:1;if(vid.playbackRate!=r)vid.playbackRate=r;
+ if(lag>0.3){vid.currentTime=vid.buffered.end(vid.buffered.length-1);return}
+ const r=lag>0.02?2:1;if(vid.playbackRate!=r)vid.playbackRate=r;
  if(vid.paused)vid.play().catch(()=>{});
-},100);
+},50);
 
 function showMode(m){
  if(showMode.m==m)return;showMode.m=m;
@@ -211,7 +216,7 @@ function login(){const p=$('pin').value.trim();if(!p)return;localStorage.pin=p;r
 $('pin').addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter')login()});
 function connect(){
  const pin=localStorage.pin;if(!pin)return;
- ws=new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(pin)}`);
+ ws=new WebSocket(`${location.protocol=='https:'?'wss':'ws'}://${location.host}/ws?k=${encodeURIComponent(pin)}`);
  ws.binaryType='arraybuffer';let opened=false;
  ws.onopen=()=>{opened=true;retry=0;$('login').style.display='none';setSt(1);sent='';stream();
   clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)send('i')},4000)};
@@ -230,20 +235,19 @@ function setSt(on){$('dot').style.background=on?'var(--ok)':'var(--error)';$('st
  if(!on){showMode('');$('phTxt').textContent='Reconnecting…'}else $('phTxt').textContent='Starting stream…'}
 
 /* ================= Quality ================= */
-const Q={low:[480,800,30],med:[720,2500,30],high:[1080,6000,60]};
+const Q={low:[480,1000,60],med:[720,2500,60],high:[1080,5000,60]};
 function stream(){
  let p;
  if(document.hidden)p=[0,0,0];
- else if(q=='auto'){const px=scr.clientWidth*(devicePixelRatio||1),w=[480,720,1080].find(x=>x>=px*.9)||1080;p=w<=480?Q.low.slice():w<=720?Q.med.slice():[1080,5000,30];p[1]=Math.round(p[1]*1.2)}
+ else if(q=='auto')p=[480,1500,60]; // latency first: smallest frames encode/decode fastest
  else p=Q[q];
- P.dur=p[2]?Math.round(500/p[2]):16;
  const s='V:'+p.join(',');if(s!=sent){sent=s;send(s)}
 }
 function setQ(v){q=v;localStorage.q=v;document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.q==q));stream()}
 document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>setQ(b.dataset.q));setQ(q);
 addEventListener('resize',()=>{clearTimeout(stream._t);stream._t=setTimeout(stream,300)});
 document.addEventListener('visibilitychange',stream);
-setInterval(()=>{if(showMode.m)$('stat').textContent=frames?`${frames} fps · ${(bytes/1024).toFixed(0)} KB/s`:'Live · idle';frames=0;bytes=0},1000);
+setInterval(()=>{if(showMode.m)$('stat').textContent=frames?`${frames} fps · ${(bytes/1024).toFixed(0)} KB/s`+(latN?` · ${Math.round(latSum/latN)} ms`:''):'Live · idle';frames=0;bytes=0;latSum=latN=0},1000);
 
 /* ================= Touch ================= */
 const cur=()=>showMode.m=='jpeg'?img:showMode.m=='canvas'?cv:vid;
@@ -255,7 +259,7 @@ let down=null,mv=null,raf=0,wheelT=0;
 scr.addEventListener('pointerdown',e=>{if(e.button)return;e.preventDefault();scr.setPointerCapture(e.pointerId);const p=pos(e);down=[...p,performance.now()];
  if(info.touch)send(`d:${p[0]},${p[1]}`)});
 scr.addEventListener('pointermove',e=>{if(!down||!info.touch)return;mv=pos(e);
- if(!raf)raf=requestAnimationFrame(()=>{raf=0;if(mv&&down)send(`m:${mv[0]},${mv[1]}`)})}); // at most one move per frame
+ send(`m:${mv[0]},${mv[1]}`)});
 scr.addEventListener('pointerup',e=>{if(!down)return;const p=pos(e);
  if(info.touch)send(`u:${p[0]},${p[1]}`);
  else{const dt=Math.round(performance.now()-down[4]),moved=Math.hypot(p[2]-down[2],p[3]-down[3])>8;
@@ -311,10 +315,11 @@ function showInfo(d){
   it('volume_up','Volume',`${d.vol}/${d.volMax}`,d.vol/d.volMax*100),
   it('wifi','IP',d.ip),
   it('schedule','Uptime',ft(d.uptime)),
-  it('videocam','Stream',d.capture),
+  it('videocam','Stream',d.capture+(d.video?` · encode ${d.encMs} ms`:'')),
  ].join('');
  stream();
 }
+if(!window.VideoDecoder&&location.protocol=='http:'){const f=$('fast');f.href='https://'+location.hostname+':'+((+location.port||80)+1)+'/';f.style.display='flex';f.title='Accept the certificate warning once: enables WebCodecs, the lowest-latency video decoder'}
 if(localStorage.pin)connect();
 </script>
 </body>

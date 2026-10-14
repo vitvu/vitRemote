@@ -8,7 +8,12 @@ Android app (Kotlin) that uses an **Accessibility Service** to let you view and 
   - Static screen = almost no traffic; slow network => old frames are dropped instead of adding latency
   - Fallback without the capture permission: JPEG via the Accessibility screenshot API (Android 11+, ~3 fps)
 - **Real-time touch** (Android 8+): the finger follows the mouse live while dragging (continued gestures); mouse wheel scrolls, right-click = Back
-- **Quality**: Auto (default, follows the window size) / Low 480p / Medium 720p / High 1080p60
+- **Latency first**: SPS rewritten to declare no frame reordering (decoders show each frame immediately instead of
+  buffering ~10 frames), 60 fps, encoder repeats the last frame while idle, playhead pinned to the live edge
+- **HTTPS on port+1** (self-signed, key in Android Keystore): makes the page a secure context so the browser can use
+  WebCodecs with `optimizeForLatency`; plain http on the main port uses MSE
+- **Quality**: Auto (default, 480p60 for lowest latency) / Low 480p / Medium 720p / High 1080p — all 60 fps
+- The web page shows fps, bandwidth, browser decode delay and on-phone encode time
 - Navigation: **Back / Home / Recents**
 - **Power key**: tap = screen off / wake, hold 0.6 s = power menu (Android < 9 needs the optional "Screen lock" device-admin permission)
 - Volume −/+ (hold to repeat), full-resolution screenshot download

@@ -62,6 +62,9 @@ class CaptureService : Service() {
     private var curKey = ""
     @Volatile var config: ByteArray? = null
         private set
+    /** Average capture->encoded latency (ms) of recent frames. */
+    @Volatile var encMs = 0f
+        private set
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(id: Int) {}
@@ -176,8 +179,9 @@ class CaptureService : Service() {
             setInteger(MediaFormat.KEY_BIT_RATE, kbps * 1000)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
-            // Re-send the last frame after 100 ms idle so the final image is never stuck in the encoder
-            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000)
+            // Repeat the last frame every 40 ms while idle: tiny P-frames that push the newest image
+            // through encoder/decoder pipelines immediately instead of waiting for the next change
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 40_000)
             if (Build.VERSION.SDK_INT >= 23) setInteger(MediaFormat.KEY_PRIORITY, 0) // realtime
             if (Build.VERSION.SDK_INT >= 29) setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, fps.toFloat())
             if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LATENCY, 1)
@@ -204,6 +208,8 @@ class CaptureService : Service() {
                             if (config == null) setConfig(w, hh, bytes(buf))
                         } else {
                             val key = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
+                            val lat = (System.nanoTime() / 1000 - info.presentationTimeUs) / 1000f
+                            if (lat in 0f..2000f) encMs = encMs * 0.9f + lat * 0.1f
                             val msg = ByteArray(2 + info.size)
                             msg[0] = MSG_FRAME.toByte(); msg[1] = if (key) 1 else 0
                             buf.get(msg, 2, info.size)
@@ -232,7 +238,8 @@ class CaptureService : Service() {
         return ByteArray(d.remaining()).also { d.get(it) }
     }
 
-    private fun setConfig(w: Int, hh: Int, csd: ByteArray) {
+    private fun setConfig(w: Int, hh: Int, raw: ByteArray) {
+        val csd = SpsFix.annexB(raw)
         val msg = ByteArray(5 + csd.size)
         msg[0] = MSG_CONFIG.toByte()
         msg[1] = (w shr 8).toByte(); msg[2] = w.toByte()
