@@ -172,9 +172,40 @@ class WebServer(
     }
 
     class Client(private val socket: Socket, private val out: OutputStream) {
-        @Volatile var liveWidth = 0          // 0 = not watching
+        @Volatile var liveWidth = 0          // requested stream width, 0 = not watching
+        @Volatile var kbps = 2000
+        @Volatile var fps = 30
         @Volatile var lastFrameCrc = 0L
         val addr: String = socket.inetAddress?.hostAddress ?: "?"
+
+        // ---- Video: frames go through a small queue sent by a dedicated thread, so a slow
+        // viewer never blocks the encoder. When the queue backs up, P-frames are dropped
+        // until the next keyframe => latency stays low instead of growing.
+        @Volatile var needKey = true
+        private val vq = java.util.concurrent.LinkedBlockingQueue<ByteArray>()
+        private var vThread: Thread? = null
+
+        /** Returns false if a keyframe is needed to resync this viewer. */
+        fun queueVideo(data: ByteArray, key: Boolean, config: Boolean): Boolean {
+            if (config) { vq.clear(); vq.offer(data); needKey = true; startSender(); return true }
+            if (key) {
+                if (vq.size > 2) vq.clear()
+                needKey = false
+            } else if (needKey) return false
+            else if (vq.size > 4) { vq.clear(); needKey = true; return false }
+            vq.offer(data)
+            startSender()
+            return true
+        }
+
+        @Synchronized private fun startSender() {
+            if (vThread != null) return
+            vThread = Thread({
+                try {
+                    while (!socket.isClosed) sendFrame(0x2, vq.take())
+                } catch (_: InterruptedException) {}
+            }, "vit-send").apply { isDaemon = true; start() }
+        }
 
         fun send(text: String) = sendFrame(0x1, text.toByteArray(Charsets.UTF_8))
         fun sendBin(data: ByteArray) = sendFrame(0x2, data)
@@ -196,6 +227,9 @@ class WebServer(
             try { out.write(buf); out.flush() } catch (_: Exception) { close() }
         }
 
-        fun close() { try { socket.close() } catch (_: Exception) {} }
+        fun close() {
+            try { socket.close() } catch (_: Exception) {}
+            vThread?.interrupt()
+        }
     }
 }

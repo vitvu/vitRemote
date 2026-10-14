@@ -105,7 +105,6 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
 
     override fun onClose(c: WebServer.Client) {
         cap.post { fullWaiters.remove(c) }
-        CaptureService.instance?.dropClient(c)
         updateCapture()
     }
 
@@ -126,11 +125,24 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
                 'e' -> imeEnter(c)
                 'i' -> c.send(info())
                 'c' -> requestFull(c)
-                'L' -> {
-                    c.liveWidth = arg.toIntOrNull()?.coerceIn(0, 1440) ?: 0
+                'd' -> { val p = nums(arg); touch(0, p[0], p[1]) }
+                'm' -> { val p = nums(arg); touch(1, p[0], p[1]) }
+                'u' -> { val p = nums(arg); touch(2, p[0], p[1]) }
+                'V' -> {
+                    // V:width,kbps,fps  (width 0 = stop)
+                    val p = arg.split(',').map { it.trim().toIntOrNull() ?: 0 }
+                    val was = c.liveWidth
+                    c.liveWidth = p.getOrElse(0) { 0 }.coerceIn(0, 1440)
+                    c.kbps = p.getOrElse(1) { 2000 }.coerceIn(200, 20000)
+                    c.fps = p.getOrElse(2) { 30 }.coerceIn(5, 60)
                     c.lastFrameCrc = 0
-                    // Show the last known frame immediately (a static screen produces no new frames)
-                    if (c.liveWidth > 0) lastLive?.let { c.sendBin(it) }
+                    if (c.liveWidth > 0 && was == 0) {
+                        consentAsked = false
+                        val cs = CaptureService.instance
+                        val cfg = cs?.config
+                        if (cfg != null) { c.queueVideo(cfg, false, true); cs.requestKeyFrame() }
+                        else lastLive?.let { c.sendBin(it) } // last JPEG frame for a static screen
+                    }
                     updateCapture()
                 }
                 'p' -> c.send("{\"t\":\"pong\"}")
@@ -150,9 +162,9 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
     }
 
     private fun captureMode() = when {
-        CaptureService.instance != null -> "MediaProjection"
-        Build.VERSION.SDK_INT >= 30 -> "Accessibility"
-        else -> "Needs permission"
+        CaptureService.instance != null -> "H.264 video"
+        Build.VERSION.SDK_INT >= 30 -> "JPEG (enable Screen capture for video)"
+        else -> "Needs Screen capture permission"
     }
 
     private fun info(): String {
@@ -162,6 +174,8 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
                 "clients" to clientCount,
                 "svcUptime" to (SystemClock.elapsedRealtime() - startedAt) / 1000,
                 "capture" to captureMode(),
+                "video" to (CaptureService.instance != null),
+                "touch" to (Build.VERSION.SDK_INT >= 26),
                 "w" to sz.x, "h" to sz.y,
                 "ver" to (try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "" })
             )
@@ -259,6 +273,8 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
 
     // ================= Screen capture =================
 
+    private fun jpegLive() = CaptureService.instance == null && liveClients().isNotEmpty()
+
     private fun liveClients() = server?.clients?.filter { it.liveWidth > 0 } ?: emptyList()
 
     /** Called when MediaProjection starts or stops. */
@@ -270,14 +286,30 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
 
     /** Pick the capture backend and the stream size from current viewers. */
     private fun updateCapture() {
-        val w = liveClients().maxOfOrNull { it.liveWidth } ?: 0
+        val best = liveClients().maxByOrNull { it.liveWidth }
         val cs = CaptureService.instance
         when {
-            cs != null -> cs.setWidth(w)
-            w == 0 -> {}
-            Build.VERSION.SDK_INT >= 30 -> cap.post { capture() }
-            else -> askConsent()
+            cs != null -> cs.setStream(best?.liveWidth ?: 0, best?.kbps ?: 2000, best?.fps ?: 30)
+            best == null -> {}
+            else -> {
+                if (!consentAsked) { consentAsked = true; askConsent() }
+                if (Build.VERSION.SDK_INT >= 30) cap.post { capture() } // JPEG until video is allowed
+            }
         }
+    }
+
+    @Volatile private var consentAsked = false
+    @Volatile private var lastKeyReq = 0L
+
+    fun broadcastConfig(msg: ByteArray) {
+        liveClients().forEach { it.queueVideo(msg, false, true) }
+    }
+
+    fun broadcastVideo(msg: ByteArray, key: Boolean) {
+        var need = false
+        liveClients().forEach { if (!it.queueVideo(msg, key, false)) need = true }
+        val now = SystemClock.uptimeMillis()
+        if (need && now - lastKeyReq > 500) { lastKeyReq = now; CaptureService.instance?.requestKeyFrame() }
     }
 
     /** Opens the system screen-capture dialog on the phone (once per 15 s at most). */
@@ -285,9 +317,68 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
         val now = SystemClock.elapsedRealtime()
         if (now - lastConsentAsk < 15000) return
         lastConsentAsk = now
-        notifyAll("ok", "Tap \"Start now\" on the phone to allow screen streaming")
+        notifyAll("ok", "Tap \"Start now\" on the phone to enable video streaming")
         main.post {
             startActivity(Intent(this, ProjectionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    // ================= Real-time touch (Android 8+) =================
+    // The finger is streamed as continued gesture segments: each segment covers the points
+    // received while the previous one was running, so drags follow the mouse live.
+
+    private var gActive = false
+    private var gInFlight = false
+    private var gUp = false
+    private var gLastX = 0f
+    private var gLastY = 0f
+    private var gSegAt = 0L
+    private val gPending = ArrayList<Float>()
+    private var gStroke: GestureDescription.StrokeDescription? = null
+
+    private val gCallback = object : GestureResultCallback() {
+        override fun onCompleted(d: GestureDescription?) { gInFlight = false; pump() }
+        override fun onCancelled(d: GestureDescription?) { gInFlight = false; gActive = false }
+    }
+
+    private fun touch(kind: Int, x: Int, y: Int) = main.post {
+        if (Build.VERSION.SDK_INT < 26) return@post
+        val sz = DeviceInfo.screenSize(this)
+        val px = x.coerceIn(0, 10000) * (sz.x - 1) / 10000f
+        val py = y.coerceIn(0, 10000) * (sz.y - 1) / 10000f
+        if (kind == 0) {
+            gActive = true; gUp = false; gPending.clear()
+            gLastX = px; gLastY = py
+            val path = Path().apply { moveTo(px, py); lineTo(px, py) }
+            dispatchStroke(GestureDescription.StrokeDescription(path, 0, 1, true))
+        } else {
+            if (!gActive) return@post
+            gPending.add(px); gPending.add(py)
+            if (kind == 2) gUp = true
+            if (!gInFlight) pump()
+        }
+    }
+
+    private fun pump() {
+        if (Build.VERSION.SDK_INT < 26 || !gActive || (gPending.isEmpty() && !gUp)) return
+        val path = Path().apply { moveTo(gLastX, gLastY) }
+        if (gPending.isEmpty()) path.lineTo(gLastX, gLastY)
+        var i = 0
+        while (i < gPending.size) { path.lineTo(gPending[i], gPending[i + 1]); i += 2 }
+        if (gPending.isNotEmpty()) { gLastX = gPending[gPending.size - 2]; gLastY = gPending[gPending.size - 1] }
+        gPending.clear()
+        val dur = (SystemClock.uptimeMillis() - gSegAt).coerceIn(8, 200)
+        val s = gStroke!!.continueStroke(path, 0, dur, !gUp)
+        if (gUp) gActive = false
+        dispatchStroke(s)
+    }
+
+    private fun dispatchStroke(s: GestureDescription.StrokeDescription) {
+        gStroke = s
+        gInFlight = true
+        gSegAt = SystemClock.uptimeMillis()
+        if (!dispatchGesture(GestureDescription.Builder().addStroke(s).build(), gCallback, main)) {
+            gInFlight = false; gActive = false
         }
     }
 
@@ -298,25 +389,22 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
         liveClients().forEach { if (it.lastFrameCrc != crc) { it.lastFrameCrc = crc; it.sendBin(data) } }
     }
 
+    /** Full-resolution screenshot (Android 11+). Older versions save the video frame in the browser. */
     private fun requestFull(c: WebServer.Client) {
-        val cs = CaptureService.instance
-        when {
-            cs != null -> cs.requestFull(c)
-            Build.VERSION.SDK_INT >= 30 -> cap.post { if (c !in fullWaiters) fullWaiters.add(c); capture() }
-            else -> { askConsent(); err(c, "Allow screen capture on the phone, then try again") }
-        }
+        if (Build.VERSION.SDK_INT >= 30) cap.post { if (c !in fullWaiters) fullWaiters.add(c); capture() }
+        else err(c, "Full screenshots require Android 11+")
     }
 
     /** Accessibility screenshot loop (Android 11+, ~3 fps). Runs on the cap thread. */
     private fun capture() {
-        if (capturing || Build.VERSION.SDK_INT < 30 || CaptureService.instance != null) return
-        if (fullWaiters.isEmpty() && liveClients().isEmpty()) return
+        if (capturing || Build.VERSION.SDK_INT < 30) return
+        if (fullWaiters.isEmpty() && !jpegLive()) return
         capturing = true
         takeScreenshot(Display.DEFAULT_DISPLAY, { cap.post(it) }, object : TakeScreenshotCallback {
             override fun onSuccess(res: ScreenshotResult) {
                 try { processShot(res) } catch (_: Throwable) {}
                 capturing = false
-                if (liveClients().isNotEmpty() || fullWaiters.isNotEmpty()) cap.postDelayed({ capture() }, 340)
+                if (jpegLive() || fullWaiters.isNotEmpty()) cap.postDelayed({ capture() }, 340)
             }
 
             override fun onFailure(code: Int) {
@@ -326,7 +414,7 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
                 } else {
                     fullWaiters.forEach { err(it, "Screenshot failed (code $code), the app may block capture") }
                     fullWaiters.clear()
-                    if (liveClients().isNotEmpty()) cap.postDelayed({ capture() }, 1000)
+                    if (jpegLive()) cap.postDelayed({ capture() }, 1000)
                 }
             }
         })
@@ -344,7 +432,7 @@ class RemoteService : AccessibilityService(), WebServer.Listener {
             fullWaiters.forEach { it.sendBin(data) }
             fullWaiters.clear()
         }
-        val w = liveClients().maxOfOrNull { it.liveWidth } ?: 0
+        val w = if (jpegLive()) liveClients().maxOf { it.liveWidth } else 0
         if (w > 0) {
             val tw = minOf(w, bmp.width)
             val scaled = if (tw == bmp.width) bmp

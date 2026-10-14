@@ -8,31 +8,30 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
-import android.media.ImageReader
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
-import android.os.SystemClock
+import android.view.Surface
 
 /**
- * Streams the screen through MediaProjection (works on every Android version).
- * The virtual display only produces frames when the screen changes, and is detached
- * entirely when nobody is watching, so it costs nothing while idle.
+ * Streams the screen as H.264 video: MediaProjection -> VirtualDisplay -> hardware encoder
+ * surface (zero copy, almost no CPU). A static screen produces (almost) no data, and the
+ * display is torn down entirely when nobody is watching.
  */
 class CaptureService : Service() {
 
     companion object {
         @Volatile var instance: CaptureService? = null
             private set
-
-        private const val MIN_FRAME_MS = 66L // ~15 fps cap
 
         fun start(ctx: Context, code: Int, data: Intent) {
             val i = Intent(ctx, CaptureService::class.java).putExtra("code", code).putExtra("data", data)
@@ -42,21 +41,33 @@ class CaptureService : Service() {
         fun stop(ctx: Context) {
             ctx.stopService(Intent(ctx, CaptureService::class.java))
         }
+
+        /** Message types (first byte of a binary WebSocket message). */
+        const val MSG_CONFIG = 3 // [3][w:2][h:2][SPS+PPS annex-B]
+        const val MSG_FRAME = 4  // [4][key:1][annex-B access unit]
     }
 
-    private val thread = HandlerThread("vit-proj").apply { start() }
+    private val thread = HandlerThread("vit-enc").apply { start() }
     private val h = Handler(thread.looper)
 
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
-    private var reader: ImageReader? = null
-    private var curW = 0
-    private var curH = 0
+    private var codec: MediaCodec? = null
+    private var surface: Surface? = null
+
+    // Requested stream (all accessed on h)
     private var wantW = 0
-    private val fullWaiters = ArrayList<WebServer.Client>()
-    private var lastSent = 0L
-    private var scheduled = false
-    private var rowBmp: Bitmap? = null
+    private var kbps = 2000
+    private var fps = 30
+    private var curKey = ""
+    @Volatile var config: ByteArray? = null
+        private set
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(id: Int) {}
+        override fun onDisplayRemoved(id: Int) {}
+        override fun onDisplayChanged(id: Int) { if (id == 0) h.post { reconfigure() } } // rotation
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -74,6 +85,7 @@ class CaptureService : Service() {
         }, h)
         projection = p
         instance = this
+        (getSystemService(DISPLAY_SERVICE) as DisplayManager).registerDisplayListener(displayListener, h)
         RemoteService.instance?.onCaptureChanged()
         return START_NOT_STICKY
     }
@@ -87,7 +99,7 @@ class CaptureService : Service() {
         val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = b.setSmallIcon(R.drawable.ic_cast)
             .setContentTitle("vitRemote")
-            .setContentText("Screen streaming is available")
+            .setContentText("Screen streaming ready")
             .setContentIntent(pi)
             .setOngoing(true)
             .build()
@@ -97,91 +109,136 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         instance = null
-        h.post { release() }
+        (getSystemService(DISPLAY_SERVICE) as DisplayManager).unregisterDisplayListener(displayListener)
+        h.post { release(); projection?.stop(); projection = null }
         thread.quitSafely()
         RemoteService.instance?.onCaptureChanged()
         super.onDestroy()
     }
 
-    private fun release() {
-        display?.release(); display = null
-        reader?.close(); reader = null
-        projection?.stop(); projection = null
-        rowBmp?.recycle(); rowBmp = null
+    /** width 0 stops the stream. */
+    fun setStream(w: Int, kbps: Int, fps: Int) = h.post {
+        wantW = w; this.kbps = kbps; this.fps = fps
+        reconfigure()
     }
 
-    /** Live stream width; 0 pauses the stream. */
-    fun setWidth(w: Int) = h.post { wantW = w; reconfigure() }
+    fun requestKeyFrame() = h.post {
+        try { codec?.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) }) } catch (_: Exception) {}
+    }
 
-    fun requestFull(c: WebServer.Client) = h.post { if (c !in fullWaiters) fullWaiters.add(c); reconfigure() }
-
-    fun dropClient(c: WebServer.Client) = h.post { fullWaiters.remove(c) }
+    private fun release() {
+        display?.release(); display = null
+        try { codec?.stop() } catch (_: Exception) {}
+        codec?.release(); codec = null
+        surface?.release(); surface = null
+        config = null
+        curKey = ""
+    }
 
     private fun reconfigure() {
         val p = projection ?: return
+        if (wantW <= 0) { release(); return }
         val sz = DeviceInfo.screenSize(this)
-        val target = if (fullWaiters.isNotEmpty()) sz.x else wantW
-        if (target <= 0) { display?.surface = null; return }
-        val tw = minOf(target, sz.x) and 1.inv()
-        val th = (sz.y.toLong() * tw / sz.x).toInt() and 1.inv()
-        val dpi = resources.displayMetrics.densityDpi
-        if (display != null && tw == curW && th == curH) { display?.surface = reader?.surface; return }
-        val old = reader
-        val r = ImageReader.newInstance(tw, th, PixelFormat.RGBA_8888, 2)
-        r.setOnImageAvailableListener({ onFrame(it) }, h)
-        reader = r; curW = tw; curH = th
-        val d = display
-        if (d == null) {
-            display = p.createVirtualDisplay(
-                "vitRemote", tw, th, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, r.surface, null, h
-            )
-        } else {
-            d.resize(tw, th, dpi)
-            d.surface = r.surface
+        // Encoders want multiples of 16
+        val tw = (minOf(wantW, sz.x) / 16 * 16).coerceAtLeast(160)
+        val th = (sz.y.toLong() * tw / sz.x).toInt() / 16 * 16
+        val key = "$tw:$th:$kbps:$fps"
+        if (key == curKey && codec != null) {
+            // Same encoder: just change bitrate on the fly if possible
+            return
         }
-        old?.close()
+        if (codec != null && curKey.startsWith("$tw:$th:")) {
+            try {
+                codec!!.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, kbps * 1000) })
+                curKey = key
+                return
+            } catch (_: Exception) {}
+        }
+        release()
+        val c = try { createEncoder(tw, th) } catch (e: Exception) {
+            RemoteService.instance?.notifyAll("err", "Video encoder error: ${e.message}")
+            return
+        }
+        codec = c
+        curKey = key
+        val s = c.createInputSurface()
+        surface = s
+        c.start()
+        display = p.createVirtualDisplay(
+            "vitRemote", tw, th, resources.displayMetrics.densityDpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, s, null, h
+        )
     }
 
-    private fun onFrame(r: ImageReader) {
-        if (scheduled) return
-        val wait = MIN_FRAME_MS - (SystemClock.uptimeMillis() - lastSent)
-        if (wait > 0 && fullWaiters.isEmpty()) {
-            // Throttle, but always deliver the latest frame afterwards
-            scheduled = true
-            h.postDelayed({ scheduled = false; process(r) }, wait)
-        } else process(r)
+    private fun createEncoder(w: Int, hh: Int): MediaCodec {
+        fun fmt(profile: Boolean) = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, hh).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_BIT_RATE, kbps * 1000)
+            setInteger(MediaFormat.KEY_FRAME_RATE, fps)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
+            // Re-send the last frame after 100 ms idle so the final image is never stuck in the encoder
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000)
+            if (Build.VERSION.SDK_INT >= 23) setInteger(MediaFormat.KEY_PRIORITY, 0) // realtime
+            if (Build.VERSION.SDK_INT >= 29) setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, fps.toFloat())
+            if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LATENCY, 1)
+            if (profile) setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
+        }
+        val c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        c.setCallback(object : MediaCodec.Callback() {
+            override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {}
+
+            override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
+                val sps = format.getByteBuffer("csd-0") ?: return
+                val pps = format.getByteBuffer("csd-1") ?: return
+                setConfig(w, hh, bytes(sps) + bytes(pps))
+            }
+
+            override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
+                if (codec !== this@CaptureService.codec) return
+                try {
+                    val buf = codec.getOutputBuffer(index)
+                    if (buf != null && info.size > 0) {
+                        buf.position(info.offset); buf.limit(info.offset + info.size)
+                        val isConfig = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                        if (isConfig) {
+                            if (config == null) setConfig(w, hh, bytes(buf))
+                        } else {
+                            val key = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
+                            val msg = ByteArray(2 + info.size)
+                            msg[0] = MSG_FRAME.toByte(); msg[1] = if (key) 1 else 0
+                            buf.get(msg, 2, info.size)
+                            RemoteService.instance?.broadcastVideo(msg, key)
+                        }
+                    }
+                    codec.releaseOutputBuffer(index, false)
+                } catch (_: IllegalStateException) {}
+            }
+
+            override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
+                h.post { if (codec === this@CaptureService.codec) { release(); reconfigure() } }
+            }
+        }, h)
+        try {
+            c.configure(fmt(true), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        } catch (_: Exception) {
+            c.reset()
+            c.configure(fmt(false), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        }
+        return c
     }
 
-    private fun process(r: ImageReader) {
-        if (r !== reader) return
-        val img = try { r.acquireLatestImage() } catch (_: Exception) { null } ?: return
-        val w = img.width
-        val hh = img.height
-        val plane = img.planes[0]
-        val stride = plane.rowStride / plane.pixelStride
-        var bmp = rowBmp
-        if (bmp == null || bmp.width != stride || bmp.height != hh) {
-            bmp?.recycle()
-            bmp = Bitmap.createBitmap(stride, hh, Bitmap.Config.ARGB_8888)
-            rowBmp = bmp
-        }
-        bmp!!.copyPixelsFromBuffer(plane.buffer)
-        img.close()
+    private fun bytes(b: java.nio.ByteBuffer): ByteArray {
+        val d = b.duplicate()
+        return ByteArray(d.remaining()).also { d.get(it) }
+    }
 
-        // Rotation changed => rebuild the display with the new aspect ratio
-        val sz = DeviceInfo.screenSize(this)
-        if ((sz.x > sz.y) != (w > hh)) { reconfigure(); return }
-
-        val frame = if (stride == w) bmp else Bitmap.createBitmap(bmp, 0, 0, w, hh)
-        lastSent = SystemClock.uptimeMillis()
-        if (fullWaiters.isNotEmpty() && w >= sz.x - 1) {
-            val data = RemoteService.jpeg(frame, 88, 2)
-            fullWaiters.forEach { it.sendBin(data) }
-            fullWaiters.clear()
-            reconfigure()
-        } else if (wantW > 0) {
-            RemoteService.instance?.broadcastLive(RemoteService.jpeg(frame, 55, 1))
-        }
-        if (frame !== bmp) frame.recycle()
+    private fun setConfig(w: Int, hh: Int, csd: ByteArray) {
+        val msg = ByteArray(5 + csd.size)
+        msg[0] = MSG_CONFIG.toByte()
+        msg[1] = (w shr 8).toByte(); msg[2] = w.toByte()
+        msg[3] = (hh shr 8).toByte(); msg[4] = hh.toByte()
+        System.arraycopy(csd, 0, msg, 5, csd.size)
+        config = msg
+        RemoteService.instance?.broadcastConfig(msg)
     }
 }
